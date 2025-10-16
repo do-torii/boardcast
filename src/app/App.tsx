@@ -94,6 +94,12 @@ export default function App() {
     if (cached) setSession(JSON.parse(cached))
   }, [])
 
+  // Always signal readiness ASAP so the splash hides in Mini Apps
+  useEffect(() => {
+    // Fire-and-forget; do not block on environment detection
+    try { void sdk.actions.ready() } catch {}
+  }, [])
+
   // Auto-login & display when running inside Farcaster Mini App
   useEffect(() => {
     ;(async () => {
@@ -101,6 +107,7 @@ export default function App() {
         const inMini = await sdk.isInMiniApp().catch(() => false)
         if (!inMini) return
 
+        // Redundant call in case the first call is too early
         await sdk.actions.ready()
         const ctx = await sdk.context
         if (!ctx?.user?.fid) return
@@ -381,4 +388,3 @@ export default function App() {
     </div>
   )
 }
-
