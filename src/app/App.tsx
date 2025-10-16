@@ -1,4 +1,10 @@
-﻿import { useEffect, useState } from 'react'
+﻿import { sdk } from "@farcaster/miniapp-sdk";
+
+(async () => {
+  await sdk.actions.ready();
+})();
+
+import { useEffect, useState } from 'react'
 import { beginNeynarLogin, pollNeynarLogin, Session } from '@/auth/neynar'
 import './boardcast.css'
 
