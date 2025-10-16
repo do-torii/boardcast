@@ -1,0 +1,15 @@
+{
+  "name": "FC Mini App",
+  "description": "Starter shell for Farcaster Mini Apps",
+  "start_url": "/",
+  "icon_url": "/icon.svg",
+  "sdk_version": 1,
+  "permissions": [
+    "user.read"
+  ],
+  "developer": {
+    "name": "Your Name",
+    "url": "https://example.com"
+  }
+}
+
