@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { beginNeynarLogin, pollNeynarLogin, Session } from '@/auth/neynar'
 import './boardcast.css'
 
