@@ -1,10 +1,5 @@
-﻿import { sdk } from "@farcaster/miniapp-sdk";
-
-(async () => {
-  await sdk.actions.ready();
-})();
-
 import { useEffect, useState } from 'react'
+import sdk from '@farcaster/miniapp-sdk'
 import { beginNeynarLogin, pollNeynarLogin, Session } from '@/auth/neynar'
 import './boardcast.css'
 
@@ -53,7 +48,7 @@ function NoteCard({ note, small, onClick }: { note: Note; small?: boolean; onCli
           e.preventDefault()
           onClick?.()
         }
-      }}
+      })}
     >
       {!small && <div className="pin" />}
       {small && note.category && <div className="catline">{note.category}</div>}
@@ -65,7 +60,7 @@ function NoteCard({ note, small, onClick }: { note: Note; small?: boolean; onCli
           <span className="tim">{timeAgo(note.createdAt || Date.now())}</span>
         </div>
         <div className="likepill">
-          <span className="icon">{note.liked ? '♥' : '♡'}</span>
+          <span className="icon">{note.liked ? '❤' : '♡'}</span>
           <span>{note.likes || 0}</span>
         </div>
       </div>
@@ -97,6 +92,37 @@ export default function App() {
   useEffect(() => {
     const cached = sessionStorage.getItem('fc.session')
     if (cached) setSession(JSON.parse(cached))
+  }, [])
+
+  // Auto-login & display when running inside Farcaster Mini App
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const inMini = await sdk.isInMiniApp().catch(() => false)
+        if (!inMini) return
+
+        await sdk.actions.ready()
+        const ctx = await sdk.context
+        if (!ctx?.user?.fid) return
+
+        let accessToken: string | undefined
+        try {
+          const { token } = await sdk.quickAuth.getToken()
+          accessToken = token
+        } catch {}
+
+        const next: Session = {
+          fid: ctx.user.fid,
+          username: ctx.user.username || String(ctx.user.fid),
+          displayName: ctx.user.displayName,
+          pfpUrl: ctx.user.pfpUrl,
+          accessToken,
+        }
+        setSession((prev) => (prev?.fid === next.fid ? prev : next))
+      } catch (err) {
+        console.warn('[miniapp] auto-login skipped:', err)
+      }
+    })()
   }, [])
 
   useEffect(() => {
@@ -221,7 +247,7 @@ export default function App() {
             aria-label={categoryView ? 'Back' : 'See by category'}
             title={categoryView ? 'Back' : 'See by category'}
           >
-            {categoryView ? '←' : '›'}
+            {categoryView ? '‹' : '›'}
           </button>
         </div>
 
@@ -346,7 +372,7 @@ export default function App() {
                 className={`likebtn ${detail.liked ? 'liked' : ''} detail-like`}
                 onClick={() => toggleLike(detail)}
               >
-                <span className="icon">{detail.liked ? '♥' : '♡'}</span> <span className="cnt">{detail.likes || 0}</span>
+                <span className="icon">{detail.liked ? '❤' : '♡'}</span> <span className="cnt">{detail.likes || 0}</span>
               </button>
             </div>
           </div>
@@ -355,3 +381,4 @@ export default function App() {
     </div>
   )
 }
+
