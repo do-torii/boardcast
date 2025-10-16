@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import sdk from '@farcaster/miniapp-sdk'
 import { beginNeynarLogin, pollNeynarLogin, Session } from '@/auth/neynar'
 import './boardcast.css'
@@ -48,7 +48,7 @@ function NoteCard({ note, small, onClick }: { note: Note; small?: boolean; onCli
           e.preventDefault()
           onClick?.()
         }
-      })}
+      }}
     >
       {!small && <div className="pin" />}
       {small && note.category && <div className="catline">{note.category}</div>}
@@ -88,6 +88,7 @@ export default function App() {
   const [loginBusy, setLoginBusy] = useState<'idle' | 'loading' | 'polling'>('idle')
   const [categoryView, setCategoryView] = useState(false)
   const [activeCategory, setActiveCategory] = useState('')
+  const [showSplash, setShowSplash] = useState(true)
 
   useEffect(() => {
     const cached = sessionStorage.getItem('fc.session')
@@ -96,18 +97,23 @@ export default function App() {
 
   // Always signal readiness ASAP so the splash hides in Mini Apps
   useEffect(() => {
-    // Fire-and-forget; do not block on environment detection
     try { void sdk.actions.ready() } catch {}
   }, [])
 
+  // Keep an in-app splash briefly for smoother transition
+  useEffect(() => {
+    const t = setTimeout(() => setShowSplash(false), 900)
+    return () => clearTimeout(t)
+  }, [])
+  useEffect(() => { if (session) setShowSplash(false) }, [session])
+
   // Auto-login & display when running inside Farcaster Mini App
   useEffect(() => {
-    ;(async () => {
+    (async () => {
       try {
         const inMini = await sdk.isInMiniApp().catch(() => false)
         if (!inMini) return
 
-        // Redundant call in case the first call is too early
         await sdk.actions.ready()
         const ctx = await sdk.context
         if (!ctx?.user?.fid) return
@@ -283,6 +289,16 @@ export default function App() {
             +
           </button>
         </div>
+
+        {showSplash && (
+          <div className="splash" aria-label="Loading">
+            <div className="splash-inner">
+              <div className="splash-logo" />
+              <div className="splash-title">BOARD CAST</div>
+              <div className="splash-sub">Loading...</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {(showCompose || detail) && (
@@ -388,3 +404,4 @@ export default function App() {
     </div>
   )
 }
+
