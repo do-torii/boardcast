@@ -57,7 +57,9 @@ function NoteCard({ note, small, onClick }: { note: Note; small?: boolean; onCli
       <div className="footer">
         <div className="bytime">
           <span className="by">{note.author || '@anon'}</span>
-          <span className="tim">{timeAgo(note.createdAt || Date.now())}</span>
+          {small && (
+            <span className="tim">{timeAgo(note.createdAt || Date.now())}</span>
+          )}
         </div>
         <div className="likepill">
           <span className={"icon heart " + (note.liked ? "liked" : "")}>{note.liked ? "\u2665" : "\u2661"}</span>
@@ -235,7 +237,7 @@ export default function App() {
         <header>
           <div className="hdr-left">
             <button className="iconbtn" id="btnHome" aria-label="home">
-              <svg viewBox="0 0 24 24" width="22" height="22">
+              <svg viewBox="0 0 24 24" width="26" height="26">
                 <path d="M3 12l9-8 9 8v8H14v-5H10v5H3z" />
               </svg>
             </button>
@@ -248,8 +250,10 @@ export default function App() {
             onClick={handleAvatarLogin}
             disabled={loginBusy !== 'idle'}
           >
-            <div className="ring" />
-            <div className="base" />
+            <svg viewBox="0 0 24 24" aria-hidden="true" width="30" height="30">
+              <circle cx="12" cy="9" r="4" />
+              <path d="M5 20c0-3.5 3.3-6 7-6s7 2.5 7 6" />
+            </svg>
           </button>
         </header>
 
