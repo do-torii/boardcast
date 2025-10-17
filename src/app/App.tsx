@@ -392,7 +392,7 @@ export default function App() {
       id="composeForm"
     >
       <div className="row gap">
-        <label className="field" style={{ flex: 1 }}>
+        <label className="field" style={{ width: '54%' }}>
           <div className="lb">Category</div>
           <select name="category" id="categorySelect" defaultValue="">
             <option value="">Select a category</option>
@@ -403,18 +403,21 @@ export default function App() {
             <option value="recruit">Recruit</option>
           </select>
         </label>
-        <label className="field" style={{ width: '40%' }}>
-          <div className="lb">color</div>
-          <select name="color" id="colorSelect" defaultValue="yellow">
-            <option value="yellow">yellow</option>
-            <option value="pink">pink</option>
-            <option value="mint">mint</option>
-            <option value="lav">purple</option>
-            <option value="blue">blue</option>
-          </select>
-        </label>
-        <label className="chk">
-          <input type="checkbox" name="pin" id="pinCheck" /> Pin to top
+        <label className="field" style={{ width: '25%' }}>
+          <div className="lb-row">
+            <div className="lb" style={{ margin: 0 }}>Color</div>
+            <div className="color-picks" role="radiogroup" aria-label="Note color">
+              {(['yellow','pink','mint','lav','blue'] as NoteColor[]).map((c) => (
+                <label key={c} className={`color-dot c-${c}`} title={c}>
+                  <input type="radio" name="color" value={c} defaultChecked={c==='yellow'} aria-label={c} />
+                  <span />
+                </label>
+              ))}
+            </div>
+          </div>
+          <label className="chk small" htmlFor="pinCheck" style={{ paddingTop: 8 }}>
+            <input type="checkbox" name="pin" id="pinCheck" /> Pin to top
+          </label>
         </label>
       </div>
 

@@ -78,7 +78,20 @@ header{ display:flex; align-items:center; justify-content:space-between; padding
 .sheet-hdr{ display:flex; align-items:center; justify-content:space-between; font-weight:800; padding:4px 4px 10px; border-bottom:2px dashed var(--ink); }
 .field{ display:flex; flex-direction:column; gap:4px; padding:10px 4px; }
 .lb{ font-size:.9rem; font-weight:700; }
+.lb-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .field input, .field textarea, .field select{ border:2px solid var(--ink); border-radius:8px; padding:8px 10px; font-size:14px; }
+.color-picks{ display:flex; align-items:center; gap:6px; padding:0; }
+.color-dot{ position:relative; width:16px; height:16px; aspect-ratio:1/1; border:2px solid var(--ink); border-radius:50%; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; flex:0 0 auto; box-sizing:content-box; }
+.color-dot input{ position:absolute; opacity:0; pointer-events:none; }
+.color-dot span{ position:relative; display:block; width:100%; height:100%; border-radius:50%; }
+.color-dot.c-yellow span{ background:var(--note-yellow); }
+.color-dot.c-pink span{ background:var(--note-pink); }
+.color-dot.c-mint span{ background:var(--note-mint); }
+.color-dot.c-lav span{ background:var(--note-lav); }
+.color-dot.c-blue span{ background:var(--note-blue); }
+.color-dot input:focus-visible + span{ outline:3px solid #000; outline-offset:2px; }
+.color-dot input:checked + span::after{ content:'\2713'; position:absolute; inset:0; display:grid; place-items:center; font-size:12px; font-weight:1000; color:var(--ink); text-shadow:0 1px 0 rgba(255,255,255,.55); }
+.chk.small{ padding:8px 0 0; white-space:nowrap; gap:6px; }
 .row{ display:flex; align-items:center; }
 .row.gap{ gap:10px; }
 .row.end{ justify-content:flex-end; }
