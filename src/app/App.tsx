@@ -88,6 +88,7 @@ export default function App() {
   const [loginBusy, setLoginBusy] = useState<'idle' | 'loading' | 'polling'>('idle')
   const [activeCategory, setActiveCategory] = useState('')
   const [showSplash, setShowSplash] = useState(true)
+  const [showProfile, setShowProfile] = useState(false)
 
   useEffect(() => {
     const cached = sessionStorage.getItem('fc.session')
@@ -141,6 +142,19 @@ export default function App() {
     if (session) sessionStorage.setItem('fc.session', JSON.stringify(session))
     else sessionStorage.removeItem('fc.session')
   }, [session])
+
+  function signOut() {
+    setSession(null)
+    setShowProfile(false)
+  }
+
+  async function handleAvatarClick() {
+    if (session) {
+      setShowProfile((v) => !v)
+      return
+    }
+    await handleAvatarLogin()
+  }
 
   async function handleAvatarLogin() {
     try {
@@ -247,13 +261,19 @@ export default function App() {
             className="avatarbtn"
             id="btnProfile"
             title="profile"
-            onClick={handleAvatarLogin}
+            onClick={handleAvatarClick}
             disabled={loginBusy !== 'idle'}
+            aria-haspopup="dialog"
+            aria-expanded={showProfile}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true" width="30" height="30">
-              <circle cx="12" cy="9" r="4" />
-              <path d="M5 20c0-3.5 3.3-6 7-6s7 2.5 7 6" />
-            </svg>
+            {session?.pfpUrl ? (
+              <img src={session.pfpUrl} alt="" />
+            ) : (
+              <svg viewBox="0 0 24 24" aria-hidden="true" width="30" height="30">
+                <circle cx="12" cy="9" r="4" />
+                <path d="M5 20c0-3.5 3.3-6 7-6s7 2.5 7 6" />
+              </svg>
+            )}
           </button>
         </header>
 
@@ -302,6 +322,32 @@ export default function App() {
               <div className="splash-sub">Loading...</div>
             </div>
           </div>
+        )}
+
+        {showProfile && session && (
+          <>
+            <div className="backdrop" onClick={() => setShowProfile(false)} />
+            <div className="profile-pop" role="dialog" aria-modal="true" aria-label="Profile">
+              <div className="profile-card">
+                <div className="profile-head">
+                  <div className="profile-pfp">
+                    {session.pfpUrl ? (
+                      <img src={session.pfpUrl} alt="" />
+                    ) : (
+                      <div className="pfp-placeholder" />
+                    )}
+                  </div>
+                  <div className="profile-main">
+                    <div className="profile-name">{session.displayName || `@${session.username}`}</div>
+                    <div className="profile-username">@{session.username}</div>
+                  </div>
+                </div>
+                <div className="row end" style={{ marginTop: 12 }}>
+                  <button className="btn" onClick={signOut}>Sign out</button>
+                </div>
+              </div>
+            </div>
+          </>
         )}
 
       {(showCompose || detail) && (

@@ -22,6 +22,7 @@ header{ display:flex; align-items:center; justify-content:space-between; padding
 .avatarbtn:disabled{ opacity:.6; cursor:default; }
 .avatarbtn:active{ transform:translateY(1px); }
 .avatarbtn svg{ width:30px; height:30px; stroke:var(--ink); stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+.avatarbtn img{ width:28px; height:28px; border-radius:50%; object-fit:cover; display:block; }
 
 .today{ margin:12px auto 6px; width:max-content; position:relative; background:#fff; border:2px solid var(--ink); border-radius:14px; padding:6px 14px; font-weight:700; line-height:1; }
 /* Remove tail so the border wraps cleanly */
@@ -111,3 +112,14 @@ header{ display:flex; align-items:center; justify-content:space-between; padding
 .splash-title{ font-weight:900; letter-spacing:.2px; }
 .splash-sub{ color:#666; font-size:.9rem; }
 @keyframes float{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-6px) } }
+
+/* Profile popover */
+.profile-pop{ position:absolute; right:10px; top:58px; z-index:902; }
+.profile-card{ width:280px; max-width:calc(100vw - 40px); background:#fff; border:2px solid var(--ink); border-radius:14px; box-shadow:0 12px 30px rgba(0,0,0,.18); padding:12px; }
+.profile-head{ display:flex; align-items:center; gap:10px; }
+.profile-pfp{ width:48px; height:48px; border-radius:50%; border:2px solid var(--ink); overflow:hidden; background:#eee; display:grid; place-items:center; }
+.profile-pfp img{ width:100%; height:100%; object-fit:cover; display:block; }
+.pfp-placeholder{ width:100%; height:100%; background:linear-gradient(135deg,#f3f3f3,#e7e7e7); }
+.profile-main{ display:flex; flex-direction:column; line-height:1.1; }
+.profile-name{ font-weight:900; }
+.profile-username{ color:#666; }
