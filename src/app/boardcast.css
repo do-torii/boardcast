@@ -14,6 +14,7 @@
 .phone{ width:424px; height:695px; background:#fff; border:2.5px solid var(--ink); border-radius:22px; overflow:hidden; position:relative; box-shadow:0 12px 30px rgba(0,0,0,.12); display:flex; flex-direction:column; }
 header{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px 6px; border-bottom:2px solid var(--ink); }
 .hdr-left{display:flex; align-items:center; gap:10px;}
+.hdr-right{display:flex; align-items:center; gap:10px;}
 .iconbtn{ width:28px; height:28px; display:flex; align-items:center; justify-content:center; border:2px solid var(--ink); border-radius:6px; background:#fff; cursor:pointer; }
 .iconbtn svg{ display:block; width:26px; height:26px; }
 .iconbtn:active{ transform:translateY(1px); }
@@ -23,6 +24,10 @@ header{ display:flex; align-items:center; justify-content:space-between; padding
 .avatarbtn:active{ transform:translateY(1px); }
 .avatarbtn svg{ width:30px; height:30px; stroke:var(--ink); stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
 .avatarbtn img{ width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; }
+
+/* Connect wallet button */
+.connectbtn{ height:34px; padding:6px 10px; border:2px solid var(--ink); border-radius:999px; background:#fff; font-weight:800; cursor:pointer; line-height:1; }
+.connectbtn:active{ transform:translateY(1px); }
 
 .today{ margin:12px auto 6px; width:max-content; position:relative; background:#fff; border:2px solid var(--ink); border-radius:14px; padding:6px 14px; font-weight:700; line-height:1; }
 /* Remove tail so the border wraps cleanly */

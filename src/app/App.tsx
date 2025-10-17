@@ -89,6 +89,7 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('')
   const [showSplash, setShowSplash] = useState(true)
   const [showProfile, setShowProfile] = useState(false)
+  const [walletName, setWalletName] = useState<string | null>(null)
 
   useEffect(() => {
     const cached = sessionStorage.getItem('fc.session')
@@ -154,6 +155,11 @@ export default function App() {
       return
     }
     await handleAvatarLogin()
+  }
+
+  function handleConnectClick() {
+    // Placeholder: integrate real wallet connection here
+    console.log('connect wallet clicked')
   }
 
   async function handleAvatarLogin() {
@@ -257,24 +263,34 @@ export default function App() {
             </button>
             <div className="title">BOARD CAST</div>
           </div>
-          <button
-            className="avatarbtn"
-            id="btnProfile"
-            title="profile"
-            onClick={handleAvatarClick}
-            disabled={loginBusy !== 'idle'}
-            aria-haspopup="dialog"
-            aria-expanded={showProfile}
-          >
-            {session?.pfpUrl ? (
-              <img src={session.pfpUrl} alt="" />
-            ) : (
-              <svg viewBox="0 0 24 24" aria-hidden="true" width="30" height="30">
-                <circle cx="12" cy="9" r="4" />
-                <path d="M5 20c0-3.5 3.3-6 7-6s7 2.5 7 6" />
-              </svg>
-            )}
-          </button>
+          <div className="hdr-right">
+            <button
+              className="connectbtn"
+              id="btnConnect"
+              onClick={handleConnectClick}
+              title="connect wallet"
+            >
+              {walletName || 'connect'}
+            </button>
+            <button
+              className="avatarbtn"
+              id="btnProfile"
+              title="profile"
+              onClick={handleAvatarClick}
+              disabled={loginBusy !== 'idle'}
+              aria-haspopup="dialog"
+              aria-expanded={showProfile}
+            >
+              {session?.pfpUrl ? (
+                <img src={session.pfpUrl} alt="" />
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true" width="30" height="30">
+                  <circle cx="12" cy="9" r="4" />
+                  <path d="M5 20c0-3.5 3.3-6 7-6s7 2.5 7 6" />
+                </svg>
+              )}
+            </button>
+          </div>
         </header>
 
         <div className="content">
