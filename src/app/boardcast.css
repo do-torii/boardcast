@@ -18,11 +18,11 @@ header{ display:flex; align-items:center; justify-content:space-between; padding
 .iconbtn svg{ display:block; width:26px; height:26px; }
 .iconbtn:active{ transform:translateY(1px); }
 .title{ font-size:20px; font-weight:800; letter-spacing:.5px; }
-.avatarbtn{ width:34px; height:34px; border:2px solid var(--ink); border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.avatarbtn{ width:34px; height:34px; border:2px solid var(--ink); border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; overflow:hidden; }
 .avatarbtn:disabled{ opacity:.6; cursor:default; }
 .avatarbtn:active{ transform:translateY(1px); }
 .avatarbtn svg{ width:30px; height:30px; stroke:var(--ink); stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
-.avatarbtn img{ width:28px; height:28px; border-radius:50%; object-fit:cover; display:block; }
+.avatarbtn img{ width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; }
 
 .today{ margin:12px auto 6px; width:max-content; position:relative; background:#fff; border:2px solid var(--ink); border-radius:14px; padding:6px 14px; font-weight:700; line-height:1; }
 /* Remove tail so the border wraps cleanly */
