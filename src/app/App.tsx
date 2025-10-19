@@ -97,6 +97,7 @@ export default function App() {
   const activeProviderRef = useRef<any | null>(null)
   const [pendingAction, setPendingAction] = useState<null | 'compose'>(null)
   const [chainId, setChainId] = useState<string | null>(null)
+  const [phoneScale, setPhoneScale] = useState(1)
 
   useEffect(() => {
     const cached = sessionStorage.getItem('fc.session')
@@ -114,6 +115,27 @@ export default function App() {
     return () => clearTimeout(t)
   }, [])
   useEffect(() => { if (session) setShowSplash(false) }, [session])
+
+  // Ensure consistent aspect scaling inside Mini App preview (avoid narrow layout)
+  useEffect(() => {
+    let cleanup: (() => void) | undefined
+    (async () => {
+      const inMini = await sdk.isInMiniApp().catch(() => false)
+      if (!inMini) { setPhoneScale(1); return }
+      const baseWidth = 424 // designed width
+      const sidePadding = 12 // container padding in our UI
+      const calc = () => {
+        const avail = Math.max(0, window.innerWidth - sidePadding * 2)
+        const s = Math.min(1, avail / baseWidth)
+        setPhoneScale(s > 0 ? s : 1)
+      }
+      calc()
+      const onResize = () => calc()
+      window.addEventListener('resize', onResize)
+      cleanup = () => window.removeEventListener('resize', onResize)
+    })()
+    return () => { try { cleanup?.() } catch {} }
+  }, [])
 
   // Auto-login & display when running inside Farcaster Mini App
   useEffect(() => {
@@ -661,7 +683,7 @@ export default function App() {
 
   return (
     <div className="bc">
-      <div className="phone" id="app">
+      <div className="phone" id="app" style={{ transform: phoneScale !== 1 ? `scale(${phoneScale})` : undefined, transformOrigin: 'top center' }}>
         <header>
           <div className="hdr-left">
             <button className="iconbtn" id="btnHome" aria-label="home">
