@@ -10,8 +10,8 @@
   --card:#ffffff;
 }
 
-.bc{ display:flex; align-items:center; justify-content:center; min-height:100vh; padding:8px; background:var(--bg); color:var(--ink); }
-.phone{ width:424px; height:695px; background:#fff; border:2.5px solid var(--ink); border-radius:22px; overflow:hidden; position:relative; box-shadow:0 12px 30px rgba(0,0,0,.12); display:flex; flex-direction:column; }
+.bc{ display:flex; align-items:center; justify-content:center; min-height:100vh; padding:5px; background:var(--bg); color:var(--ink); }
+.phone{ width:424px; height:680px; background:#fff; border:2.5px solid var(--ink); border-radius:22px; overflow:hidden; position:relative; box-shadow:0 12px 30px rgba(0,0,0,.12); display:flex; flex-direction:column; }
 header{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px 6px; border-bottom:2px solid var(--ink); }
 .hdr-left{display:flex; align-items:center; gap:10px;}
 .hdr-right{display:flex; align-items:center; gap:10px;}
