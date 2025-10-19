@@ -63,7 +63,7 @@ header{ display:flex; align-items:center; justify-content:space-between; padding
 .catrow{ display:flex; gap:6px; padding:0 12px 8px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .catrow::-webkit-scrollbar{ height:6px; }
 .catrow::-webkit-scrollbar-thumb{ background:#d0d0d0; border-radius:6px; }
-.catchip{ border:2px solid var(--ink); border-radius:999px; background:#fff; padding:3px 8px; font-weight:800; cursor:pointer; font-size:.86rem; line-height:1.1; }
+.catchip{ border:2px solid var(--ink); border-radius:999px; background:#fff; padding:3px 8px; font-weight:800; cursor:pointer; font-size:.8rem; line-height:1.1; }
 .catchip.active{ background:#111; color:#fff; }
 .feed{ display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; padding:0 16px 16px; }
 .content{ flex:1; display:flex; flex-direction:column; overflow:hidden; }
