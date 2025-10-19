@@ -96,6 +96,7 @@ export default function App() {
   const [providers, setProviders] = useState<any[]>([])
   const activeProviderRef = useRef<any | null>(null)
   const [pendingAction, setPendingAction] = useState<null | 'compose'>(null)
+  const [chainId, setChainId] = useState<string | null>(null)
 
   useEffect(() => {
     const cached = sessionStorage.getItem('fc.session')
@@ -186,6 +187,24 @@ export default function App() {
   const fallbackIsMetaMask = useMemo(() => {
     try { return Boolean((injectedFallback as any)?.isMetaMask) } catch { return false }
   }, [injectedFallback])
+
+  function chainNameFromId(id?: string | number | null) {
+    if (id == null) return 'Unknown'
+    const hex = typeof id === 'number' ? '0x' + id.toString(16) : String(id)
+    const map: Record<string, string> = {
+      '0x1': 'Mainnet',
+      '0xaa36a7': 'Sepolia',
+      '0x2105': 'Base',
+      '0x14a33': 'Base Sepolia',
+      '0xa': 'OP Mainnet',
+      '0x1a4': 'OP Sepolia',
+      '0xa4b1': 'Arbitrum One',
+      '0x66eee': 'Arb Sepolia',
+      '0x89': 'Polygon',
+      '0x13881': 'Mumbai',
+    }
+    return map[hex.toLowerCase()] || `Chain ${hex}`
+  }
 
   type KnownWallet = {
     id: string
@@ -388,6 +407,65 @@ export default function App() {
     }
   }
 
+  function ChainIcon({ id }: { id?: string | null }) {
+    const sz = 14
+    const common = { width: sz, height: sz } as any
+    const hex = typeof id === 'number' ? '0x' + id.toString(16) : (id || '').toLowerCase()
+    switch (hex) {
+      // Base
+      case '0x2105':
+      case '0x14a33':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <circle cx="12" cy="12" r="10" fill="#0052FF" />
+            <rect x="7" y="11" width="10" height="2" rx="1" fill="#fff" />
+          </svg>
+        )
+      // Ethereum
+      case '0x1':
+      case '0xaa36a7':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <circle cx="12" cy="12" r="10" fill="#f5f5f5" stroke="#111" />
+            <path d="M12 5l4 7-4 3-4-3 4-7zm0 14l-4-6 4 2 4-2-4 6z" fill="#6f6f6f" />
+          </svg>
+        )
+      // Optimism
+      case '0xa':
+      case '0x1a4':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <circle cx="12" cy="12" r="10" fill="#ff0420" />
+            <text x="12" y="14" textAnchor="middle" fontSize="8" fontWeight="900" fill="#fff">OP</text>
+          </svg>
+        )
+      // Arbitrum
+      case '0xa4b1':
+      case '0x66eee':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <rect x="4" y="4" width="16" height="16" rx="4" fill="#2d6cff" />
+            <path d="M8 16l3-8h2l-3 8H8zm6 0l3-8h-2l-3 8h2z" fill="#fff" />
+          </svg>
+        )
+      // Polygon
+      case '0x89':
+      case '0x13881':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <circle cx="12" cy="12" r="10" fill="#8247e5" />
+            <path d="M8 10.5l2-1.2 4 2.3 2-1.2v2.4l-2 1.2-4-2.3-2 1.2v-2.4z" fill="#fff"/>
+          </svg>
+        )
+      default:
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <circle cx="12" cy="12" r="10" fill="#ddd" stroke="#111" />
+          </svg>
+        )
+    }
+  }
+
   async function connectWithProvider(p: any) {
     try {
       if (!p) {
@@ -396,11 +474,14 @@ export default function App() {
       }
       const accounts: string[] = await p.request({ method: 'eth_requestAccounts' })
       const addr = accounts?.[0]
+      const cid: string | undefined = await p.request({ method: 'eth_chainId' }).catch(() => undefined)
       if (addr) {
         setAccount(addr)
         setWalletName(shorten(addr))
+        if (cid) setChainId(cid)
         activeProviderRef.current = p
         console.log('Connected wallet address:', addr)
+        if (cid) console.log('Connected chain:', chainNameFromId(cid))
         if (pendingAction === 'compose') {
           setPendingAction(null)
           setShowCompose(true)
@@ -408,6 +489,8 @@ export default function App() {
         try {
           p.removeListener?.('accountsChanged', onAccountsChanged)
           p.on?.('accountsChanged', onAccountsChanged)
+          p.removeListener?.('chainChanged', onChainChanged)
+          p.on?.('chainChanged', onChainChanged)
         } catch {}
       }
     } catch (err: any) {
@@ -423,6 +506,11 @@ export default function App() {
     setAccount(a)
     setWalletName(a ? shorten(a) : null)
     if (a) console.log('Switched wallet address:', a)
+  }
+
+  function onChainChanged(next: string) {
+    setChainId(next)
+    console.log('Switched chain:', chainNameFromId(next))
   }
 
   const featuredIds = ['coinbase','metamask','rainbow','farcaster','walletconnect','trust','zerion']
@@ -561,7 +649,14 @@ export default function App() {
               onClick={handleConnectClick}
               title="connect wallet"
             >
-              {walletName || 'connect'}
+              {walletName ? (
+                <>
+                  <span className="chainwrap"><ChainIcon id={chainId} /></span>
+                  <span className="addr">{walletName}</span>
+                </>
+              ) : (
+                'connect'
+              )}
             </button>
             <button
               className="avatarbtn"

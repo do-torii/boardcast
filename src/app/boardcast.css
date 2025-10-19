@@ -26,8 +26,10 @@ header{ display:flex; align-items:center; justify-content:space-between; padding
 .avatarbtn img{ width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; }
 
 /* Connect wallet button */
-.connectbtn{ height:34px; padding:6px 10px; border:2px solid var(--ink); border-radius:999px; background:#fff; font-weight:800; cursor:pointer; line-height:1; }
+.connectbtn{ height:34px; padding:6px 10px; border:2px solid var(--ink); border-radius:999px; background:#fff; font-weight:800; cursor:pointer; line-height:1; display:flex; align-items:center; gap:6px; }
 .connectbtn:active{ transform:translateY(1px); }
+.connectbtn .chainwrap{ display:flex; align-items:center; justify-content:center; width:16px; height:16px; }
+.connectbtn .addr{ font-size:.78rem; font-weight:500; letter-spacing:0; }
 
 .today{ margin:12px auto 6px; width:max-content; position:relative; background:#fff; border:2px solid var(--ink); border-radius:14px; padding:6px 14px; font-weight:700; line-height:1; }
 /* Remove tail so the border wraps cleanly */
