@@ -339,6 +339,35 @@ export default function App() {
     return providers.filter((p) => !knownWallets.some((k) => k.match(p.info)))
   }, [providers, knownWallets])
 
+  const autoConnectTriedRef = useRef(false)
+
+  // Auto-connect wallet when running inside Farcaster Mini App
+  useEffect(() => {
+    (async () => {
+      if (autoConnectTriedRef.current) return
+      if (account) return
+      try {
+        const inMini = await sdk.isInMiniApp().catch(() => false)
+        if (!inMini) return
+        // Prefer well-known providers in this order
+        const order = ['coinbase', 'metamask', 'rainbow']
+        for (const id of order) {
+          const prov = (installedMap as Map<string, any>).get(id)
+          if (prov) {
+            autoConnectTriedRef.current = true
+            await connectWithProvider(prov)
+            return
+          }
+        }
+        const anyProv = providers[0]?.provider || injectedFallback
+        if (anyProv) {
+          autoConnectTriedRef.current = true
+          await connectWithProvider(anyProv)
+        }
+      } catch {}
+    })()
+  }, [providers, installedMap, injectedFallback, account])
+
   function WalletIcon({ id }: { id?: string }) {
     const sz = 20
     const common = { width: sz, height: sz } as any
