@@ -258,7 +258,11 @@ export default function App() {
       name: 'Farcaster',
       installUrl: 'https://warpcast.com/',
       icon: 'https://warpcast.com/favicon-32x32.png',
-      match: () => false, // not an EIP-6963 wallet; shown as option always
+      // If a Farcaster wallet provider is injected (e.g., Warpcast wallet), match it here
+      match: (info) => {
+        const n = String(info?.name || info?.rdns || '').toLowerCase()
+        return n.includes('farcaster') || n.includes('warpcast')
+      },
       action: 'farcaster',
     },
     // 5. WalletConnect (QR connect)
@@ -783,12 +787,12 @@ export default function App() {
                           key={w.id}
                           className="wallet-item"
                           onClick={() => (
-                            w.action === 'farcaster'
-                              ? (setShowWalletPicker(false), void handleAvatarLogin())
-                              : w.action === 'wc'
-                                ? openInstall(w.installUrl)
-                                : installed
-                                  ? connectWithProvider(installedMap.get(w.id))
+                            installed
+                              ? connectWithProvider(installedMap.get(w.id))
+                              : w.action === 'farcaster'
+                                ? (setShowWalletPicker(false), void handleAvatarLogin())
+                                : w.action === 'wc'
+                                  ? openInstall(w.installUrl)
                                   : openInstall(w.installUrl)
                           )}
                         >
