@@ -93,6 +93,7 @@ export default function App() {
   const [walletName, setWalletName] = useState<string | null>(null)
   const [account, setAccount] = useState<string | null>(null)
   const [showWalletPicker, setShowWalletPicker] = useState(false)
+  const [showNetworkPopup, setShowNetworkPopup] = useState(false)
   const [providers, setProviders] = useState<any[]>([])
   const activeProviderRef = useRef<any | null>(null)
   const [pendingAction, setPendingAction] = useState<null | 'compose'>(null)
@@ -438,8 +439,8 @@ export default function App() {
     }
   }
 
-  function ChainIcon({ id }: { id?: string | null }) {
-    const sz = 14
+  function ChainIcon({ id, size = 14 }: { id?: string | null; size?: number }) {
+    const sz = size
     const common = { width: sz, height: sz } as any
     const hex = typeof id === 'number' ? '0x' + id.toString(16) : (id || '').toLowerCase()
     switch (hex) {
@@ -549,9 +550,15 @@ export default function App() {
   const [showAllWallets, setShowAllWallets] = useState(false)
 
   function handleConnectClick() {
-    // Always show picker so user can choose a wallet
-    setShowWalletPicker((v) => !v)
-    setShowAllWallets(false)
+    if (account) {
+      setShowNetworkPopup(true)
+      setShowAllWallets(false)
+      setShowWalletPicker(false)
+    } else {
+      // Always show picker so user can choose a wallet
+      setShowWalletPicker((v) => !v)
+      setShowAllWallets(false)
+    }
   }
 
   function handleComposeClick() {
@@ -570,6 +577,48 @@ export default function App() {
 
   function openInstall(url: string) {
     try { window.open(url, '_blank') } catch {}
+  }
+
+  // Chain switching
+  type ChainOpt = { id: string; name: string; params?: any }
+  const chainOptions: ChainOpt[] = [
+    { id: '0x2105', name: 'Base', params: { chainId: '0x2105', chainName: 'Base', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://mainnet.base.org'], blockExplorerUrls: ['https://basescan.org'] } },
+    { id: '0x14a33', name: 'Base Sepolia', params: { chainId: '0x14a33', chainName: 'Base Sepolia', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://sepolia.base.org'], blockExplorerUrls: ['https://sepolia.basescan.org'] } },
+    { id: '0x1', name: 'Ethereum', params: { chainId: '0x1', chainName: 'Ethereum', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://cloudflare-eth.com'], blockExplorerUrls: ['https://etherscan.io'] } },
+    { id: '0xaa36a7', name: 'Sepolia', params: { chainId: '0xaa36a7', chainName: 'Sepolia', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://rpc.sepolia.org'], blockExplorerUrls: ['https://sepolia.etherscan.io'] } },
+    { id: '0xa', name: 'OP Mainnet', params: { chainId: '0xa', chainName: 'OP Mainnet', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://mainnet.optimism.io'], blockExplorerUrls: ['https://optimistic.etherscan.io'] } },
+    { id: '0xa4b1', name: 'Arbitrum One', params: { chainId: '0xa4b1', chainName: 'Arbitrum One', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://arb1.arbitrum.io/rpc'], blockExplorerUrls: ['https://arbiscan.io'] } },
+    { id: '0x89', name: 'Polygon', params: { chainId: '0x89', chainName: 'Polygon', nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 }, rpcUrls: ['https://polygon-rpc.com'], blockExplorerUrls: ['https://polygonscan.com'] } },
+  ]
+
+  async function switchChain(targetId: string) {
+    const prov = activeProviderRef.current
+    if (!prov) return
+    try {
+      await prov.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: targetId }] })
+      setChainId(targetId)
+      setShowNetworkPopup(false)
+    } catch (err: any) {
+      if (err?.code === 4902) {
+        const opt = chainOptions.find((c) => c.id === targetId)
+        if (opt?.params) {
+          try {
+            await prov.request({ method: 'wallet_addEthereumChain', params: [opt.params] })
+            setChainId(targetId)
+            setShowNetworkPopup(false)
+            return
+          } catch {}
+        }
+      }
+      alert('Failed to switch network')
+    }
+  }
+
+  function disconnectWallet() {
+    setAccount(null)
+    setWalletName(null)
+    setChainId(null)
+    setShowNetworkPopup(false)
   }
 
   async function handleAvatarLogin() {
@@ -681,10 +730,7 @@ export default function App() {
               title="connect wallet"
             >
               {walletName ? (
-                <>
-                  <span className="chainwrap"><ChainIcon id={chainId} /></span>
-                  <span className="addr">{walletName}</span>
-                </>
+                <span className="chainwrap"><ChainIcon id={chainId} /></span>
               ) : (
                 'connect'
               )}
@@ -787,6 +833,32 @@ export default function App() {
                   ))}
                 </>
               )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {showNetworkPopup && (
+          <>
+            <div className="wallet-overlay" onClick={() => setShowNetworkPopup(false)} aria-hidden />
+            <div className="wallet-pop" role="dialog" aria-modal="true" aria-label="Choose network">
+              <div className="wallet-card" onClick={(e) => e.stopPropagation()}>
+                <button className="wallet-close" aria-label="Close" onClick={() => setShowNetworkPopup(false)}>x</button>
+                <div className="wallet-title">Choose Network</div>
+                {account && (
+                  <div className="addrrow">
+                    <span className="chainwrap" style={{ marginRight: 6 }}><ChainIcon id={chainId} size={20} /></span>
+                    <span className="addr light">{walletName}</span>
+                    <button className="btn small" style={{ marginLeft: 'auto' }} onClick={disconnectWallet}>disconnect</button>
+                  </div>
+                )}
+                {chainOptions.map((c) => (
+                  <button key={c.id} className="wallet-item" onClick={() => switchChain(c.id)}>
+                    <span className="chainwrap"><ChainIcon id={c.id} size={20} /></span>
+                    <span style={{ flex: 1 }}>{c.name}</span>
+                    {chainId?.toLowerCase() === c.id.toLowerCase() && <span className="tag active">active</span>}
+                  </button>
+                ))}
               </div>
             </div>
           </>
