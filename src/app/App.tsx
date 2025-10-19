@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from 'react'
 import sdk from '@farcaster/miniapp-sdk'
+import { useMemo, useRef } from 'react'
 import { beginNeynarLogin, pollNeynarLogin, Session } from '@/auth/neynar'
 import './boardcast.css'
 
@@ -90,6 +91,11 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true)
   const [showProfile, setShowProfile] = useState(false)
   const [walletName, setWalletName] = useState<string | null>(null)
+  const [account, setAccount] = useState<string | null>(null)
+  const [showWalletPicker, setShowWalletPicker] = useState(false)
+  const [providers, setProviders] = useState<any[]>([])
+  const activeProviderRef = useRef<any | null>(null)
+  const [pendingAction, setPendingAction] = useState<null | 'compose'>(null)
 
   useEffect(() => {
     const cached = sessionStorage.getItem('fc.session')
@@ -156,10 +162,295 @@ export default function App() {
     }
     await handleAvatarLogin()
   }
+  
+  // Discover EIP-6963 compatible providers
+  useEffect(() => {
+    const onAnnounce = (event: any) => {
+      const detail = event?.detail
+      if (!detail?.provider || !detail?.info) return
+      setProviders((prev) => {
+        if (prev.some((p) => p.info?.uuid === detail.info.uuid)) return prev
+        return [...prev, detail]
+      })
+    }
+    try {
+      window.addEventListener('eip6963:announceProvider', onAnnounce as any)
+      window.dispatchEvent(new Event('eip6963:requestProvider'))
+    } catch {}
+    return () => {
+      try { window.removeEventListener('eip6963:announceProvider', onAnnounce as any) } catch {}
+    }
+  }, [])
+
+  const injectedFallback = useMemo(() => (typeof window !== 'undefined' ? (window as any).ethereum : null), [])
+  const fallbackIsMetaMask = useMemo(() => {
+    try { return Boolean((injectedFallback as any)?.isMetaMask) } catch { return false }
+  }, [injectedFallback])
+
+  type KnownWallet = {
+    id: string
+    name: string
+    installUrl: string
+    icon?: string
+    match: (info: any) => boolean
+    action?: 'farcaster' | 'browser' | 'wc'
+  }
+
+  const knownWallets: KnownWallet[] = useMemo(() => [
+    // 1. Coinbase Wallet
+    {
+      id: 'coinbase',
+      name: 'Coinbase Wallet',
+      installUrl: 'https://www.coinbase.com/wallet/extensions',
+      icon: 'https://avatars.githubusercontent.com/u/1885080?s=200&v=4',
+      match: (info) => {
+        const n = String(info?.name || info?.rdns || '').toLowerCase()
+        return n.includes('coinbase') || n.includes('walletlink') || n.includes('cbw') || n.includes('com.coinbase.wallet')
+      },
+    },
+    // 2. MetaMask
+    {
+      id: 'metamask',
+      name: 'MetaMask',
+      installUrl: 'https://metamask.io/download/',
+      icon: 'https://raw.githubusercontent.com/MetaMask/brand-resources/master/SVG/metamask-fox.svg',
+      match: (info) => {
+        const n = String(info?.name || info?.rdns || '').toLowerCase()
+        return n.includes('metamask') || n.includes('io.metamask')
+      },
+    },
+    // 3. Rainbow
+    {
+      id: 'rainbow',
+      name: 'Rainbow',
+      installUrl: 'https://rainbow.me/extension',
+      icon: 'https://assets.website-files.com/5f82eae1ca021b4a45bae10a/60e5a1c0e8f7436c2a2bfb91_rainbow-icon.png',
+      match: (info) => {
+        const n = String(info?.name || info?.rdns || '').toLowerCase()
+        return n.includes('rainbow')
+      },
+    },
+    // 4. Farcaster (Mini App sign-in)
+    {
+      id: 'farcaster',
+      name: 'Farcaster',
+      installUrl: 'https://warpcast.com/',
+      icon: 'https://warpcast.com/favicon-32x32.png',
+      match: () => false, // not an EIP-6963 wallet; shown as option always
+      action: 'farcaster',
+    },
+    // 5. WalletConnect (QR connect)
+    {
+      id: 'walletconnect',
+      name: 'WalletConnect',
+      installUrl: 'https://walletconnect.com/wallets',
+      icon: 'https://walletconnect.com/_next/static/media/logo_mark.84dd8525.svg',
+      match: () => false,
+      action: 'wc',
+    },
+    // 6. Trust Wallet
+    {
+      id: 'trust',
+      name: 'Trust Wallet',
+      installUrl: 'https://trustwallet.com/browser-extension',
+      icon: 'https://assets.trustwallet.com/assets/images/favicon.png',
+      match: (info) => {
+        const n = String(info?.name || info?.rdns || '').toLowerCase()
+        return n.includes('trust')
+      },
+    },
+    // 7. Zerion
+    {
+      id: 'zerion',
+      name: 'Zerion',
+      installUrl: 'https://zerion.io/extension',
+      icon: 'https://storage.googleapis.com/zerion-public/brand/zerion-icon-512.png',
+      match: (info) => {
+        const n = String(info?.name || info?.rdns || '').toLowerCase()
+        return n.includes('zerion')
+      },
+    },
+    // Others (always visible after featured)
+    {
+      id: 'rabby',
+      name: 'Rabby Wallet',
+      installUrl: 'https://rabby.io',
+      icon: 'https://rabby.io/assets/favicon/apple-touch-icon.png',
+      match: (info) => {
+        const n = String(info?.name || info?.rdns || '').toLowerCase()
+        return n.includes('rabby')
+      },
+    },
+    {
+      id: 'okx',
+      name: 'OKX Wallet',
+      installUrl: 'https://www.okx.com/download',
+      icon: 'https://static.okx.com/cdn/assets/imgs/237/1F4C7C5C7E3B8C0E.png',
+      match: (info) => {
+        const n = String(info?.name || info?.rdns || '').toLowerCase()
+        return n.includes('okx')
+      },
+    },
+    {
+      id: 'brave',
+      name: 'Brave Wallet',
+      installUrl: 'https://support.brave.com/hc/en-us/articles/4418779394957-Brave-Wallet',
+      icon: 'https://brave.com/static-assets/images/optimized/brave-logo.png',
+      match: (info) => {
+        const n = String(info?.name || info?.rdns || '').toLowerCase()
+        return n.includes('brave')
+      },
+    },
+  ], [])
+
+  const installedMap = useMemo(() => {
+    const m = new Map<string, any>()
+    for (const p of providers) {
+      const kw = knownWallets.find((k) => k.match(p.info))
+      if (kw) m.set(kw.id, p.provider)
+    }
+    // Fallback heuristics: if only injectedFallback exists and is MetaMask
+    if (fallbackIsMetaMask && !m.has('metamask') && injectedFallback) {
+      m.set('metamask', injectedFallback)
+    }
+    return m
+  }, [providers, knownWallets, fallbackIsMetaMask, injectedFallback])
+
+  const otherProviders = useMemo(() => {
+    return providers.filter((p) => !knownWallets.some((k) => k.match(p.info)))
+  }, [providers, knownWallets])
+
+  function WalletIcon({ id }: { id?: string }) {
+    const sz = 20
+    const common = { width: sz, height: sz } as any
+    switch (id) {
+      case 'coinbase':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <circle cx="12" cy="12" r="12" fill="#0052FF" />
+            <circle cx="12" cy="12" r="6.8" fill="#fff" />
+          </svg>
+        )
+      case 'metamask':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <rect x="2" y="2" width="20" height="20" rx="4" fill="#F6851B" />
+            <path d="M7 9l5-3 5 3-5 7-5-7z" fill="#fff"/>
+          </svg>
+        )
+      case 'rainbow':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <defs>
+              <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#ff4d4d" />
+                <stop offset="50%" stopColor="#7b61ff" />
+                <stop offset="100%" stopColor="#00d4ff" />
+              </linearGradient>
+            </defs>
+            <rect x="2" y="2" width="20" height="20" rx="4" fill="url(#rg)" />
+          </svg>
+        )
+      case 'farcaster':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <rect x="2" y="2" width="20" height="20" rx="4" fill="#7C4DFF" />
+            <path d="M8 7h8v3h-5v2h4v3h-4v2H8V7z" fill="#fff" />
+          </svg>
+        )
+      case 'walletconnect':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <rect x="2" y="2" width="20" height="20" rx="4" fill="#3B99FC" />
+            <path d="M7 12c1.5-1.5 3-2 5-2s3.5.5 5 2l-1.4 1.4C14.7 11.6 13.3 11.2 12 11.2s-2.7.4-3.6 2.2L7 12z" fill="#fff" />
+          </svg>
+        )
+      case 'trust':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <rect x="2" y="2" width="20" height="20" rx="4" fill="#3375FF" />
+            <path d="M12 6l5 2v4c0 3.5-2.4 6.1-5 7-2.6-.9-5-3.5-5-7V8l5-2z" fill="#fff" />
+          </svg>
+        )
+      case 'zerion':
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <rect x="2" y="2" width="20" height="20" rx="4" fill="#2962FF" />
+            <path d="M8 7h8l-8 10h8" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )
+      default:
+        return (
+          <svg {...common} viewBox="0 0 24 24" aria-hidden>
+            <rect x="2" y="2" width="20" height="20" rx="4" fill="#ddd" stroke="#111" />
+          </svg>
+        )
+    }
+  }
+
+  async function connectWithProvider(p: any) {
+    try {
+      if (!p) {
+        alert('No wallet provider found. Please install a wallet extension.')
+        return
+      }
+      const accounts: string[] = await p.request({ method: 'eth_requestAccounts' })
+      const addr = accounts?.[0]
+      if (addr) {
+        setAccount(addr)
+        setWalletName(shorten(addr))
+        activeProviderRef.current = p
+        console.log('Connected wallet address:', addr)
+        if (pendingAction === 'compose') {
+          setPendingAction(null)
+          setShowCompose(true)
+        }
+        try {
+          p.removeListener?.('accountsChanged', onAccountsChanged)
+          p.on?.('accountsChanged', onAccountsChanged)
+        } catch {}
+      }
+    } catch (err: any) {
+      console.error('wallet connect failed', err)
+      alert(err?.message || 'Failed to connect wallet')
+    } finally {
+      setShowWalletPicker(false)
+    }
+  }
+
+  function onAccountsChanged(accs: string[]) {
+    const a = accs?.[0] || null
+    setAccount(a)
+    setWalletName(a ? shorten(a) : null)
+    if (a) console.log('Switched wallet address:', a)
+  }
+
+  const featuredIds = ['coinbase','metamask','rainbow','farcaster','walletconnect','trust','zerion']
+  const allOtherKnown = useMemo(() => knownWallets.filter(w => !featuredIds.includes(w.id)), [knownWallets])
+  const [showAllWallets, setShowAllWallets] = useState(false)
 
   function handleConnectClick() {
-    // Placeholder: integrate real wallet connection here
-    console.log('connect wallet clicked')
+    // Always show picker so user can choose a wallet
+    setShowWalletPicker((v) => !v)
+    setShowAllWallets(false)
+  }
+
+  function handleComposeClick() {
+    if (!account) {
+      setPendingAction('compose')
+      setShowWalletPicker(true)
+      setShowAllWallets(false)
+      return
+    }
+    setShowCompose(true)
+  }
+
+  function shorten(addr: string) {
+    return addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
+  }
+
+  function openInstall(url: string) {
+    try { window.open(url, '_blank') } catch {}
   }
 
   async function handleAvatarLogin() {
@@ -293,6 +584,88 @@ export default function App() {
           </div>
         </header>
 
+        {showWalletPicker && (
+          <>
+            <div
+              className="wallet-overlay"
+              onClick={() => { setShowWalletPicker(false); setShowAllWallets(false) }}
+              aria-hidden
+            />
+            <div className="wallet-pop" role="dialog" aria-modal="true" aria-label="Select wallet">
+              <div className="wallet-card" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="wallet-close"
+                  aria-label="Close"
+                  onClick={() => { setShowWalletPicker(false); setShowAllWallets(false) }}
+                >x</button>
+              {!showAllWallets ? (
+                <>
+                  <div className="wallet-title">Connect Wallet</div>
+                  {knownWallets
+                    .filter(w => featuredIds.includes(w.id))
+                    .sort((a,b) => featuredIds.indexOf(a.id) - featuredIds.indexOf(b.id))
+                    .map((w) => {
+                      const installed = installedMap.has(w.id)
+                      return (
+                        <button
+                          key={w.id}
+                          className="wallet-item"
+                          onClick={() => (
+                            w.action === 'farcaster'
+                              ? (setShowWalletPicker(false), void handleAvatarLogin())
+                              : w.action === 'wc'
+                                ? openInstall(w.installUrl)
+                                : installed
+                                  ? connectWithProvider(installedMap.get(w.id))
+                                  : openInstall(w.installUrl)
+                          )}
+                        >
+                          <WalletIcon id={w.id} />
+                          <span style={{ flex: 1 }}>{w.name}</span>
+                          {installed && w.action !== 'farcaster' && <span className="tag">installed</span>}
+                        </button>
+                      )
+                    })}
+
+                  <button className="wallet-item" onClick={() => setShowAllWallets(true)}>
+                    <div className="wallet-icon-fallback" />
+                    <span style={{ flex: 1 }}>All wallets</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="wallet-subhdr">
+                    <button className="wallet-back" onClick={() => setShowAllWallets(false)}>◀</button>
+                    <div className="wallet-sec-hdr" style={{ margin: 0 }}>All wallets</div>
+                  </div>
+                  {allOtherKnown.map((w) => {
+                    const installed = installedMap.has(w.id)
+                    return (
+                      <button
+                        key={w.id}
+                        className="wallet-item"
+                        onClick={() => (installed ? connectWithProvider(installedMap.get(w.id)) : openInstall(w.installUrl))}
+                      >
+                        <WalletIcon id={w.id} />
+                        <span style={{ flex: 1 }}>{w.name}</span>
+                        {installed && <span className="tag">installed</span>}
+                      </button>
+                    )
+                  })}
+                  {otherProviders.length > 0 && otherProviders.map((p) => (
+                    <button key={p.info.uuid} className="wallet-item" onClick={() => connectWithProvider(p.provider)}>
+                      <WalletIcon />
+                      <span style={{ flex: 1 }}>{p.info.name}</span>
+                      <span className="tag">installed</span>
+                    </button>
+                  ))}
+                </>
+              )}
+              </div>
+            </div>
+          </>
+        )}
+
         <div className="content">
           <div className="today">Today’s Notes</div>
 
@@ -327,7 +700,7 @@ export default function App() {
         </div>
 
         <div className="btbar">
-          <button className="fab" id="btnCompose" onClick={() => setShowCompose(true)}>+</button>
+          <button className="fab" id="btnCompose" onClick={handleComposeClick}>+</button>
         </div>
 
         {showSplash && (
