@@ -19,11 +19,13 @@ header{ display:flex; align-items:center; justify-content:space-between; padding
 .iconbtn svg{ display:block; width:26px; height:26px; }
 .iconbtn:active{ transform:translateY(1px); }
 .title{ font-size:20px; font-weight:800; letter-spacing:.5px; }
-.avatarbtn{ width:34px; height:34px; border:2px solid var(--ink); border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; overflow:hidden; }
+.avatarbtn{ width:34px; height:34px; border:2px solid var(--ink); border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; overflow:hidden; transition:background-color .15s ease, border-color .15s ease; }
 .avatarbtn:disabled{ opacity:.6; cursor:default; }
 .avatarbtn:active{ transform:translateY(1px); }
 .avatarbtn svg{ width:30px; height:30px; stroke:var(--ink); stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
 .avatarbtn img{ width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; }
+/* Logged-in state visualization: fill only, keep default border */
+.avatarbtn-logged{ background:#9ccaff; }
 
 /* Connect wallet button */
 .connectbtn{ height:34px; padding:6px 10px; border:2px solid var(--ink); border-radius:999px; background:#fff; font-weight:800; cursor:pointer; line-height:1; display:flex; align-items:center; gap:6px; }

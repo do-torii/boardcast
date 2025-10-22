@@ -27,7 +27,8 @@ export async function beginNeynarLogin(): Promise<BeginLogin> {
         console.warn('[beginNeynarLogin] 404 in dev; falling back to demo')
         return { token: 'demo-token', approvalUrl: undefined }
       }
-      throw new Error('로그인 시작 실패')
+      const txt = await res.text().catch(() => '')
+      throw new Error('begin_failed: ' + txt)
     }
     return res.json()
   } catch (err) {
@@ -35,7 +36,7 @@ export async function beginNeynarLogin(): Promise<BeginLogin> {
       console.warn('[beginNeynarLogin] network error; falling back to demo:', err)
       return { token: 'demo-token', approvalUrl: undefined }
     }
-    throw err
+    throw err as any
   }
 }
 
@@ -44,7 +45,7 @@ export async function pollNeynarLogin(token: string): Promise<Session> {
   const usingDemo = import.meta.env.DEV && import.meta.env.VITE_NEYNAR_DEMO === '1'
 
   if (usingDemo) {
-    await new Promise(r => setTimeout(r, 1200))
+    await new Promise((r) => setTimeout(r, 1200))
     return {
       fid: 999999,
       username: 'demo_user',
@@ -69,7 +70,8 @@ export async function pollNeynarLogin(token: string): Promise<Session> {
           pfpUrl: 'https://avatars.githubusercontent.com/u/9919?s=80&v=4',
         }
       }
-      throw new Error('승인 상태 조회 실패')
+      const txt = await res.text().catch(() => '')
+      throw new Error('poll_failed: ' + txt)
     }
     return res.json()
   } catch (err) {
@@ -82,10 +84,11 @@ export async function pollNeynarLogin(token: string): Promise<Session> {
         pfpUrl: 'https://avatars.githubusercontent.com/u/9919?s=80&v=4',
       }
     }
-    throw err
+    throw err as any
   }
 }
 
 export function revokeSession(_session: Session) {
   // Implement if needed by calling your backend to revoke tokens
 }
+

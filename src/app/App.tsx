@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import sdk from '@farcaster/miniapp-sdk'
 import { useMemo, useRef } from 'react'
-import { beginNeynarLogin, pollNeynarLogin, Session } from '@/auth/neynar'
+import { Session } from '@/auth/neynar'
 import './boardcast.css'
 
 type NoteColor = 'yellow' | 'pink' | 'mint' | 'lav' | 'blue'
@@ -98,6 +98,9 @@ export default function App() {
   const activeProviderRef = useRef<any | null>(null)
   const [pendingAction, setPendingAction] = useState<null | 'compose'>(null)
   const [chainId, setChainId] = useState<string | null>(null)
+  const [showNamePrompt, setShowNamePrompt] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  const [nameError, setNameError] = useState('')
 
   useEffect(() => {
     const cached = sessionStorage.getItem('fc.session')
@@ -521,8 +524,13 @@ export default function App() {
         console.log('Connected wallet address:', addr)
         if (cid) console.log('Connected chain:', chainNameFromId(cid))
         if (pendingAction === 'compose') {
-          setPendingAction(null)
-          setShowCompose(true)
+          // If nickname/session is not set yet, prompt for name first
+          if (!session) {
+            setShowNamePrompt(true)
+          } else {
+            setPendingAction(null)
+            setShowCompose(true)
+          }
         }
         try {
           p.removeListener?.('accountsChanged', onAccountsChanged)
@@ -572,6 +580,11 @@ export default function App() {
       setPendingAction('compose')
       setShowWalletPicker(true)
       setShowAllWallets(false)
+      return
+    }
+    if (!session) {
+      setPendingAction('compose')
+      setShowNamePrompt(true)
       return
     }
     setShowCompose(true)
@@ -647,13 +660,8 @@ export default function App() {
         setSession(next)
         alert(`Signed in as @${next.username}`)
       } else {
-        // Fallback to Neynar Login for web preview
-        const init = await beginNeynarLogin()
-        setLoginBusy('polling')
-        if (init.approvalUrl) window.open(init.approvalUrl, '_blank')
-        const sess = await pollNeynarLogin(init.token)
-        setSession(sess)
-        alert(`Signed in as @${sess.username}`)
+        // Web: prompt user to choose a nickname (guest)
+        setShowNamePrompt(true)
       }
     } catch (e: any) {
       console.error(e)
@@ -661,6 +669,41 @@ export default function App() {
       alert(`Sign-in failed. ${msg}`)
     } finally {
       setLoginBusy('idle')
+    }
+  }
+
+  function sanitizeName(raw: string) {
+    let s = String(raw || '')
+      .trim()
+      .replace(/^@+/, '') // drop leading @ if provided
+      .toLowerCase()
+    // replace spaces with hyphen, keep a-z0-9._-
+    s = s.replace(/\s+/g, '-')
+    s = s.replace(/[^a-z0-9._-]/g, '')
+    // collapse multiple separators
+    s = s.replace(/[-_.]{2,}/g, '-')
+    return s.slice(0, 24)
+  }
+
+  function confirmGuestName() {
+    const v = sanitizeName(nameDraft)
+    if (!v || v.length < 3) {
+      setNameError('Nickname must be at least 3 characters')
+      return
+    }
+    setNameError('')
+    const next: Session = {
+      fid: Date.now(),
+      username: v,
+      displayName: v,
+    }
+    setSession(next)
+    setShowNamePrompt(false)
+    setNameDraft('')
+    alert(`Signed in as @${next.username}`)
+    if (pendingAction === 'compose') {
+      setPendingAction(null)
+      setShowCompose(true)
     }
   }
 
@@ -743,7 +786,7 @@ export default function App() {
               )}
             </button>
             <button
-              className="avatarbtn"
+              className={`avatarbtn ${session ? 'avatarbtn-logged' : ''}`}
               id="btnProfile"
               title="profile"
               onClick={handleAvatarClick}
@@ -840,6 +883,31 @@ export default function App() {
                   ))}
                 </>
               )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {showNamePrompt && (
+          <>
+            <div className="wallet-overlay" onClick={() => setShowNamePrompt(false)} aria-hidden />
+            <div className="wallet-pop" role="dialog" aria-modal="true" aria-label="Choose nickname">
+              <div className="wallet-card" onClick={(e) => e.stopPropagation()}>
+                <button className="wallet-close" aria-label="Close" onClick={() => setShowNamePrompt(false)}>x</button>
+                <div className="wallet-title">Choose a nickname</div>
+                <div style={{ fontSize: 14, color: '#555', marginBottom: 10 }}>Pick a name to use for posting in web.</div>
+                <input
+                  autoFocus
+                  placeholder="e.g. mint-fox"
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') confirmGuestName() }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid #ccc', borderRadius: 8 }}
+                />
+                {nameError && <div style={{ color: '#c00', marginTop: 6, fontSize: 12 }}>{nameError}</div>}
+                <div className="row end" style={{ marginTop: 12 }}>
+                  <button className="btn" onClick={confirmGuestName}>Continue</button>
+                </div>
               </div>
             </div>
           </>

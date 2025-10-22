@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     const data = await r.json()
 
     // Best-effort mapping of different field names to a common shape
-    const token = data?.token || data?.request_token || data?.requestToken || data?.result?.token
+    const token = data?.token || data?.request_token || data?.requestToken || data?.result?.token || data?.signer_uuid || data?.result?.signer_uuid
     const approvalUrl = data?.approval_url || data?.approvalUrl || data?.url || data?.deeplink_url || data?.sign_in_url || data?.result?.approval_url
 
     if (!token) {
