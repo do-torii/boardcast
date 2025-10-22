@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     return
   }
 
-  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+  const headers = { 'Accept': 'application/json' }
   const apiKey = process.env.NEYNAR_API_KEY
   const apiKeyHeader = process.env.NEYNAR_API_KEY_HEADER || 'api_key'
   if (apiKey) headers[apiKeyHeader] = apiKey
@@ -26,13 +26,22 @@ export default async function handler(req, res) {
   const payload = {}
   if (process.env.NEYNAR_CLIENT_ID) payload.client_id = process.env.NEYNAR_CLIENT_ID
   if (process.env.NEYNAR_REDIRECT_URI) payload.redirect_uri = process.env.NEYNAR_REDIRECT_URI
+  if (process.env.NEYNAR_SCOPE) payload.scope = process.env.NEYNAR_SCOPE
+  if (process.env.NEYNAR_RESPONSE_TYPE) payload.response_type = process.env.NEYNAR_RESPONSE_TYPE
 
   try {
-    const r = await fetch(beginUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    })
+    const method = (process.env.NEYNAR_BEGIN_METHOD || 'POST').toUpperCase()
+    let url = beginUrl
+    let opts = { method, headers: { ...headers } }
+    if (method === 'GET') {
+      const u = new URL(url)
+      for (const [k, v] of Object.entries(payload)) if (v != null) u.searchParams.set(k, v)
+      url = u.toString()
+    } else {
+      opts.headers['Content-Type'] = 'application/json'
+      opts.body = JSON.stringify(payload)
+    }
+    const r = await fetch(url, opts)
     if (!r.ok) {
       const text = await r.text().catch(() => '')
       res.status(r.status).json({ error: 'begin_failed', detail: text })
@@ -54,4 +63,3 @@ export default async function handler(req, res) {
     res.status(500).json({ error: 'begin_exception', message: String(err && err.message || err) })
   }
 }
-

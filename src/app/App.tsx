@@ -655,9 +655,10 @@ export default function App() {
         setSession(sess)
         alert(`Signed in as @${sess.username}`)
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e)
-      alert('Sign-in failed. Please try again.')
+      const msg = e?.message || e?.toString?.() || 'Sign-in failed'
+      alert(`Sign-in failed. ${msg}`)
     } finally {
       setLoginBusy('idle')
     }
