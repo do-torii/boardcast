@@ -60,7 +60,7 @@ header{ display:flex; align-items:center; justify-content:space-between; padding
 .feed-hdr{ display:flex; align-items:center; justify-content:space-between; margin:10px 16px 6px; }
 .feed-lbl{ font-weight:800; }
 .arrowbtn{ width:28px; height:28px; display:grid; place-items:center; }
-.catrow{ display:flex; gap:6px; padding:0 12px 8px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.catrow{ display:flex; gap:5px; padding:0 12px 8px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .catrow::-webkit-scrollbar{ height:6px; }
 .catrow::-webkit-scrollbar-thumb{ background:#d0d0d0; border-radius:6px; }
 .catchip{ border:2px solid var(--ink); border-radius:999px; background:#fff; padding:3px 8px; font-weight:800; cursor:pointer; font-size:.8rem; line-height:1.1; }
@@ -164,3 +164,7 @@ header{ display:flex; align-items:center; justify-content:space-between; padding
 .addrrow .addr.light{ font-size:.78rem; font-weight:500; color:#333; }
 .btn.small{ height:28px; padding:0 10px; border:2px solid #333; border-radius:8px; background:#333; color:#fff; font-weight:500; font-size:.78rem; cursor:pointer; letter-spacing:.1px; display:flex; align-items:center; justify-content:center; line-height:1; }
 .btn.small:active{ transform:translateY(1px); }
+
+/* Compose form inputs */
+#bodyInput{ font-family: inherit; font-size: 1rem; }
+#bodyInput::placeholder{ font-size: 1rem; font-weight: 400; opacity:.9; }
