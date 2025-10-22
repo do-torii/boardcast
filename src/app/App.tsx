@@ -90,6 +90,7 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('')
   const [showSplash, setShowSplash] = useState(true)
   const [showProfile, setShowProfile] = useState(false)
+  const [showLoginScreen, setShowLoginScreen] = useState(false)
   const [walletName, setWalletName] = useState<string | null>(null)
   const [account, setAccount] = useState<string | null>(null)
   const [showWalletPicker, setShowWalletPicker] = useState(false)
@@ -148,6 +149,36 @@ export default function App() {
       }
     })()
   }, [])
+
+  // If opened in a regular browser without a session, guide user to Farcaster login
+  useEffect(() => {
+    (async () => {
+      // Avoid triggering if already logged in or inside Mini App
+      if (session) return
+      let inMini = false
+      try { inMini = await sdk.isInMiniApp().catch(() => false) } catch {}
+      if (inMini) return
+
+      // Show a blocking login screen and kick off Neynar login flow
+      try {
+        setShowLoginScreen(true)
+        setLoginBusy('loading')
+        const init = await beginNeynarLogin()
+        setLoginBusy('polling')
+        // Open approval in a new tab so this page can continue polling
+        if (init.approvalUrl) {
+          try { window.open(init.approvalUrl, '_blank') } catch {}
+        }
+        const sess = await pollNeynarLogin(init.token)
+        setSession(sess)
+      } catch (err) {
+        console.error('External login failed', err)
+      } finally {
+        setLoginBusy('idle')
+        setShowLoginScreen(false)
+      }
+    })()
+  }, [session])
 
   useEffect(() => {
     if (session) sessionStorage.setItem('fc.session', JSON.stringify(session))
@@ -837,6 +868,30 @@ export default function App() {
                   ))}
                 </>
               )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {showLoginScreen && !session && (
+          <>
+            <div className="wallet-overlay" aria-hidden />
+            <div className="wallet-pop" role="dialog" aria-modal="true" aria-label="Farcaster login">
+              <div className="wallet-card" onClick={(e) => e.stopPropagation()}>
+                <div className="wallet-title">Sign in with Farcaster</div>
+                <div style={{ fontSize: 14, color: '#555', lineHeight: 1.5, marginBottom: 12 }}>
+                  We’re opening Warpcast (or your Farcaster app) in a new tab.
+                  After approving, return here to continue.
+                </div>
+                <div className="row end">
+                  <button
+                    className="btn"
+                    disabled={loginBusy !== 'idle'}
+                    onClick={() => { void handleAvatarLogin() }}
+                  >
+                    {loginBusy === 'polling' ? 'Waiting for approval…' : 'Open login again'}
+                  </button>
+                </div>
               </div>
             </div>
           </>
