@@ -35,6 +35,7 @@ export default async function handler(req, res) {
     res.status(500).json({ error: 'Missing NEYNAR_AUTH_POLL_URL env' })
     return
   }
+  const userUrl = process.env.NEYNAR_USER_URL || process.env.NEYNAR_AUTH_USER_URL
 
   const headers = { 'Accept': 'application/json' }
   const apiKey = process.env.NEYNAR_API_KEY
@@ -81,6 +82,20 @@ export default async function handler(req, res) {
       const userRaw = data.user || data.result?.user || data.profile || data.result?.profile || data.data?.user
       const sess = mapUserToSession(userRaw)
       if (sess) { res.json(sess); return }
+
+      // If this is an authorize-style flow, we might receive an access token first, then need a secondary call to fetch user
+      const accessToken = data.access_token || data.result?.access_token || data.token || data.result?.token
+      if (accessToken && userUrl) {
+        const uh = { 'Accept': 'application/json' }
+        if (apiKey) uh[apiKeyHeader] = apiKey
+        uh['Authorization'] = `Bearer ${accessToken}`
+        const ur = await fetch(userUrl, { headers: uh })
+        if (ur.ok) {
+          const udata = await ur.json().catch(() => ({}))
+          const sess2 = mapUserToSession(udata.user || udata.result?.user || udata.profile || udata)
+          if (sess2) { res.json(sess2); return }
+        }
+      }
       if (status.includes('approved') || status.includes('complete') || status === 'success') {
         // Some APIs return user data nested under different keys even after approved; try again mapping the root
         const s2 = mapUserToSession(data)
