@@ -29,14 +29,14 @@ function mockNeynarApi() {
 }
 
 export default defineConfig({
-  server: {
-    port: 5173,
-    host: true,
-  },
-  plugins: [mockNeynarApi()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
+    server: {
+      port: 5173,
+      host: true,
     },
-  },
+    plugins: [mockNeynarApi()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, 'src'),
+      },
+    },
 });

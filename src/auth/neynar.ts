@@ -13,7 +13,8 @@ export type BeginLogin = {
 }
 
 export async function beginNeynarLogin(): Promise<BeginLogin> {
-  const usingDemo = import.meta.env.VITE_NEYNAR_DEMO === '1'
+  // Use demo only in local dev when explicitly enabled
+  const usingDemo = import.meta.env.DEV && import.meta.env.VITE_NEYNAR_DEMO === '1'
 
   if (usingDemo) {
     return { token: 'demo-token', approvalUrl: undefined }
@@ -39,7 +40,8 @@ export async function beginNeynarLogin(): Promise<BeginLogin> {
 }
 
 export async function pollNeynarLogin(token: string): Promise<Session> {
-  const usingDemo = import.meta.env.VITE_NEYNAR_DEMO === '1'
+  // Use demo only in local dev when explicitly enabled
+  const usingDemo = import.meta.env.DEV && import.meta.env.VITE_NEYNAR_DEMO === '1'
 
   if (usingDemo) {
     await new Promise(r => setTimeout(r, 1200))
@@ -87,4 +89,3 @@ export async function pollNeynarLogin(token: string): Promise<Session> {
 export function revokeSession(_session: Session) {
   // Implement if needed by calling your backend to revoke tokens
 }
-
