@@ -15,6 +15,8 @@ type Note = {
   author?: string
   likes?: number
   liked?: boolean
+  // Optional user-selected date (YYYY-MM-DD) displayed under the note body in detail view
+  noteDate?: string
 }
 
 function timeAgo(ts: number) {
@@ -73,13 +75,16 @@ function NoteCard({ note, small, onClick }: { note: Note; small?: boolean; onCli
 
 export default function App() {
   useTick(30_000)
+  const yearNow = new Date().getFullYear()
+  const OCT30 = `${yearNow}-10-30`
+  const OCT27 = `${yearNow}-10-27`
   const [pinned, setPinned] = useState<Note[]>([    { id: 'p1', title: 'Team Meeting', body: 'Notes for today at 4 PM', color: 'mint', category: 'event', author: '@mj', createdAt: Date.now() - 3600_000, likes: 3 },
     { id: 'p2', title: 'Idea', body: 'Improvement to board interactions', color: 'yellow', category: 'boast', author: '@jk', createdAt: Date.now() - 7200_000, likes: 1 },
     { id: 'p3', title: 'Sprint', body: 'Next sprint goals', color: 'blue', category: 'notice', author: '@pm', createdAt: Date.now() - 5400_000, likes: 5 },
   ])
-  const [feed, setFeed] = useState<Note[]>([    { id: 'f1', title: 'Research', body: 'User testing schedule', color: 'lav', category: 'talk', author: '@ux', createdAt: Date.now() - 14 * 60_000, likes: 2 },
-    { id: 'f2', title: 'Bug', body: 'Mobile scroll jitter', color: 'pink', category: 'notice', author: '@fe', createdAt: Date.now() - 30 * 60_000 },
-    { id: 'f3', title: 'Release', body: 'v0.1.2 tag', color: 'yellow', category: 'event', author: '@ops', createdAt: Date.now() - 50 * 60_000, likes: 7 },
+  const [feed, setFeed] = useState<Note[]>([    { id: 'f1', title: 'Research', body: 'User testing schedule', color: 'lav', category: 'talk', author: '@ux', createdAt: Date.now() - 14 * 60_000, likes: 2, noteDate: OCT30 },
+    { id: 'f2', title: 'Bug', body: 'Mobile scroll jitter', color: 'pink', category: 'notice', author: '@fe', createdAt: Date.now() - 30 * 60_000, noteDate: OCT30 },
+    { id: 'f3', title: 'Release', body: 'v0.1.2 tag', color: 'yellow', category: 'event', author: '@ops', createdAt: Date.now() - 50 * 60_000, likes: 7, noteDate: OCT27 },
     { id: 'f4', title: 'Inquiry', body: 'Client A request summary', color: 'mint', category: 'talk', author: '@cs', createdAt: Date.now() - 2 * 3600_000 },
     { id: 'f5', title: 'Design', body: 'New button style', color: 'blue', category: 'boast', author: '@ds', createdAt: Date.now() - 6 * 3600_000 },
   ])
@@ -101,6 +106,15 @@ export default function App() {
   const [showNamePrompt, setShowNamePrompt] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
   const [nameError, setNameError] = useState('')
+  const [useCustomDate, setUseCustomDate] = useState(false)
+  const [customDate, setCustomDate] = useState('')
+  const [showCalendar, setShowCalendar] = useState(false)
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date(); d.setDate(1); return d
+  })
+  const [calSelected, setCalSelected] = useState<string | null>(null)
+  const [showTrophy, setShowTrophy] = useState(false)
+  const [rankMode, setRankMode] = useState<'streak' | 'pin' | 'write'>('streak')
 
   useEffect(() => {
     const cached = sessionStorage.getItem('fc.session')
@@ -728,6 +742,8 @@ export default function App() {
     const pin = form.get('pin') === 'on'
     const uname = (session?.username || '').trim()
     const author = uname ? (uname.startsWith('@') ? uname : '@' + uname) : '@anon'
+    const useDate = form.get('useDate') === 'on'
+    const dateStr = String(form.get('date') || '').trim()
     if (!title || !body) {
       alert('Please enter both title and content')
       return
@@ -736,6 +752,9 @@ export default function App() {
       alert('Please select a category')
       return
     }
+    // Always record actual creation time for the memo timestamp
+    const createdAt = Date.now()
+    const noteDate = useDate && dateStr ? dateStr : undefined
     const n: Note = {
       id: Math.random().toString(36).slice(2),
       title,
@@ -743,7 +762,8 @@ export default function App() {
       category: categoryRaw,
       color,
       author,
-      createdAt: Date.now(),
+      createdAt,
+      noteDate,
       likes: 0,
       liked: false,
     }
@@ -760,16 +780,105 @@ export default function App() {
   const categories = ['notice', 'event', 'talk', 'boast', 'recruit']
   const visibleFeed = feed.filter(n => (activeCategory ? n.category === activeCategory : true))
 
+  // Calendar helpers
+  function ymd(d: Date) {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${dd}`
+  }
+  function shiftMonth(d: Date, delta: number) {
+    const nd = new Date(d)
+    nd.setMonth(nd.getMonth() + delta)
+    return new Date(nd.getFullYear(), nd.getMonth(), 1)
+  }
+  const notesByDate = useMemo(() => {
+    const map = new Map<string, Note[]>()
+    for (const n of [...pinned, ...feed]) {
+      if (!n.noteDate) continue
+      const k = n.noteDate
+      const arr = map.get(k) || []
+      arr.push(n)
+      map.set(k, arr)
+    }
+    return map
+  }, [pinned, feed])
+
+  const monthCells = useMemo(() => {
+    const y = calMonth.getFullYear()
+    const m = calMonth.getMonth()
+    const firstWeekday = new Date(y, m, 1).getDay() // 0 Sun
+    const daysIn = new Date(y, m + 1, 0).getDate()
+    const cells: { label?: number; key: string; date?: string }[] = []
+    // leading blanks
+    for (let i = 0; i < firstWeekday; i++) cells.push({ key: `b${i}` })
+    for (let d = 1; d <= daysIn; d++) {
+      const k = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      cells.push({ key: k, label: d, date: k })
+    }
+    // trailing blanks to make 6 rows (6*7 = 42 cells) for consistent height
+    while (cells.length % 7 !== 0) cells.push({ key: `t${cells.length}` })
+    while (cells.length < 42) cells.push({ key: `t${cells.length}` })
+    return cells
+  }, [calMonth, notesByDate])
+
+  // Trophy rankings
+  const allNotes = useMemo(() => [...pinned, ...feed], [pinned, feed])
+  function authorKey(a?: string) { return (a || '@anon').trim() || '@anon' }
+  const writeRanks = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const n of allNotes) {
+      const k = authorKey(n.author)
+      m.set(k, (m.get(k) || 0) + 1)
+    }
+    return Array.from(m.entries()).sort((a,b) => b[1]-a[1])
+  }, [allNotes])
+  const pinRanks = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const n of pinned) {
+      const k = authorKey(n.author)
+      m.set(k, (m.get(k) || 0) + 1)
+    }
+    return Array.from(m.entries()).sort((a,b) => b[1]-a[1])
+  }, [pinned])
+  function longestStreak(dates: string[]): number {
+    // dates: array of YYYY-MM-DD
+    const set = new Set(dates)
+    const arr = Array.from(set).sort()
+    let best = 0
+    let cur = 0
+    let prev: string | null = null
+    function nextDay(s: string) {
+      const [yy,mm,dd] = s.split('-').map(Number)
+      const d = new Date(yy, mm-1, dd); d.setDate(d.getDate()+1)
+      return ymd(d)
+    }
+    for (const s of arr) {
+      if (prev && nextDay(prev) === s) cur += 1
+      else cur = 1
+      prev = s
+      if (cur > best) best = cur
+    }
+    return best
+  }
+  const streakRanks = useMemo(() => {
+    const m = new Map<string, Set<string>>()
+    for (const n of allNotes) {
+      const k = authorKey(n.author)
+      const day = n.noteDate ? n.noteDate : ymd(new Date(n.createdAt || Date.now()))
+      if (!m.has(k)) m.set(k, new Set<string>())
+      m.get(k)!.add(day)
+    }
+    const list: Array<[string, number]> = []
+    for (const [k, set] of m.entries()) list.push([k, longestStreak(Array.from(set))])
+    return list.sort((a,b) => b[1]-a[1])
+  }, [allNotes])
+
   return (
     <div className="bc">
       <div className="phone" id="app">
         <header>
           <div className="hdr-left">
-            <button className="iconbtn" id="btnHome" aria-label="home">
-              <svg viewBox="0 0 24 24" width="26" height="26">
-                <path d="M3 12l9-8 9 8v8H14v-5H10v5H3z" />
-              </svg>
-            </button>
             <div className="title">BOARD CAST</div>
           </div>
           <div className="hdr-right">
@@ -941,7 +1050,8 @@ export default function App() {
           </>
         )}
 
-        <div className="content">
+        {!showCalendar && !showTrophy ? (
+          <div className="content">
           <div className="today">Today’s Notes</div>
 
           <div className="hero" id="heroRow">
@@ -973,10 +1083,131 @@ export default function App() {
             </div>
           </div>
         </div>
-
-        <div className="btbar">
-          <button className="fab" id="btnCompose" onClick={handleComposeClick}>+</button>
+        ) : showCalendar ? (
+          <div className="cal-screen" role="region" aria-label="Calendar screen">
+          <div className="cal-wrap">
+            <div className="cal-head">
+              <button className="iconbtn" aria-label="Prev month" onClick={() => setCalMonth(shiftMonth(calMonth, -1))}>{'<'}</button>
+              <div className="cal-title">
+                <div className="cal-year">{calMonth.getFullYear()}</div>
+                <div className="cal-month">{String(calMonth.getMonth() + 1).padStart(2, '0')}</div>
+              </div>
+              <button className="iconbtn" aria-label="Next month" onClick={() => setCalMonth(shiftMonth(calMonth, 1))}>{'>'}</button>
+            </div>
+            <div className="cal-week">
+              {['SUN','MON','TUE','WED','THU','FRI','SAT'].map((d) => (
+                <div key={d} className="cal-wd">{d}</div>
+              ))}
+            </div>
+          <div className="cal-grid">
+            {monthCells.map((c) => (
+              <div key={c.key} className="cal-cell">
+                {c.label != null ? (
+                  <button
+                    className={
+                      'cal-day' +
+                      (c.date && notesByDate.has(c.date) ? ' has-note' : '') +
+                      (calSelected === c.date ? ' selected' : '')
+                    }
+                    onClick={() => setCalSelected(c.date || null)}
+                  >
+                    <span>{c.label}</span>
+                  </button>
+                ) : (
+                  <div className="cal-blank" />
+                )}
+              </div>
+            ))}
+          </div>
+          </div>
+          {calSelected && notesByDate.get(calSelected) && (
+            <div className="cal-notes">
+              <div className="cal-list">
+                {(notesByDate.get(calSelected) || []).map((n) => (
+                  <div key={n.id} className="cal-item" onClick={() => openDetail(n.id)}>
+                    <div className="cal-item-title">{n.title || 'Untitled'}</div>
+                    {n.body && <div className="cal-item-body">{n.body.slice(0, 80)}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+        ) : (
+          <div className="trophy-screen" role="region" aria-label="Trophy screen">
+            <div className="trophy-wrap">
+              <div className="trophy-head">Leaderboard</div>
+              <div className="rank-tabs" role="tablist" aria-label="rank modes">
+                {(['streak','pin','write'] as const).map((m) => (
+                  <button
+                    key={m}
+                    role="tab"
+                    aria-selected={rankMode===m}
+                    className={`rank-tab ${rankMode===m ? 'active' : ''}`}
+                    onClick={() => setRankMode(m)}
+                  >{m}</button>
+                ))}
+              </div>
+              <div className="rank-list">
+                {(rankMode==='streak' ? streakRanks : rankMode==='pin' ? pinRanks : writeRanks).map(([name, score], idx) => (
+                  <div key={name} className="rank-item">
+                    <div className="r-left">
+                      <div className="r-badge">{idx+1}</div>
+                      <div className="r-name">{name}</div>
+                    </div>
+                    <div className="r-score">{score}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="bottom-nav" role="navigation" aria-label="Primary">
+          <button className="navbtn" title="Home" aria-label="Home" onClick={() => { setShowCalendar(false); setShowTrophy(false) }}>
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
+              <path d="M3 12l9-8 9 8v8H14v-5h-4v5H3z" fill="none" stroke="#111" strokeWidth="2" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button
+            className="navbtn"
+            title="Calendar"
+            aria-label="Calendar"
+            onClick={() => {
+              const now = new Date()
+              const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+              setCalSelected(todayStr)
+              setCalMonth(new Date(now.getFullYear(), now.getMonth(), 1))
+              setShowTrophy(false); setShowCalendar(true)
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
+              <rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="#111" strokeWidth="2" />
+              <path d="M8 3v4M16 3v4M3 10h18" fill="none" stroke="#111" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+          <button className="navbtn" title="Trophy" aria-label="Trophy" onClick={() => { setShowCalendar(false); setShowTrophy(true) }}>
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
+              <path d="M6 6h12v3a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5V6z" fill="none" stroke="#111" strokeWidth="2" />
+              <path d="M8 20h8M10 14v4h4v-4" fill="none" stroke="#111" strokeWidth="2" strokeLinecap="round" />
+              <path d="M6 9H4a2 2 0 0 1-2-2V6h4v3zM18 9h2a2 2 0 0 0 2-2V6h-4v3z" fill="none" stroke="#111" strokeWidth="2" />
+            </svg>
+          </button>
+          <button className="navbtn" title="Profile" aria-label="Profile" onClick={handleAvatarClick}>
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
+              <circle cx="12" cy="9" r="4" fill="none" stroke="#111" strokeWidth="2" />
+              <path d="M5 20c0-3.5 3.3-6 7-6s7 2.5 7 6" fill="none" stroke="#111" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        {!showCalendar && !showTrophy && (
+          <div className="btfab">
+            <button className="fab" id="btnCompose" onClick={handleComposeClick}>+</button>
+          </div>
+        )}
+
+        
 
         {showSplash && (
           <div className="splash" aria-label="Loading">
@@ -1083,6 +1314,29 @@ export default function App() {
           <div className="lb">Posted by</div>
           <div id="authorDisplay">@{session?.username || 'anon'}</div>
         </div>
+        <div className="field" style={{ width: '48%' }}>
+          <div className="lb-row">
+            <label className="chk small" htmlFor="dateCheck" style={{ paddingTop: 0 }}>
+              <input
+                type="checkbox"
+                name="useDate"
+                id="dateCheck"
+                checked={useCustomDate}
+                onChange={(e) => setUseCustomDate(e.currentTarget.checked)}
+              />
+              Use date
+            </label>
+            <input
+              type="date"
+              name="date"
+              id="dateInput"
+              disabled={!useCustomDate}
+              value={customDate}
+              onChange={(e) => setCustomDate(e.currentTarget.value)}
+              style={{ height: 34 }}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="row end">
@@ -1100,6 +1354,9 @@ export default function App() {
         <button className="iconbtn detail-close" onClick={() => setDetail(null)} aria-label="Close">x</button>
         <div className="detail-title">{detail.title || 'Untitled'}</div>
         <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{detail.body}</div>
+        {detail.noteDate && (
+          <div className="detail-date">Date: {detail.noteDate}</div>
+        )}
         <div className="detail-meta">
           <span>{detail.author || '@anon'}</span>
           <span>-</span>
