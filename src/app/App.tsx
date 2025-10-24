@@ -3,6 +3,11 @@ import sdk from '@farcaster/miniapp-sdk'
 import { useMemo, useRef } from 'react'
 import { Session } from '@/auth/neynar'
 import './boardcast.css'
+import { supabase } from '@/lib/supabaseClient'
+import { createPostTx, waitForReceipt } from '@/lib/eth'
+import { SignInButton } from '@farcaster/auth-kit'
+import { recordDailyCheckin, getCurrentStreak } from '@/lib/streaks'
+import { createNote as dbCreateNote, listNotes, updateLikes as dbUpdateLikes, likeNote, unlikeNote, type DbNote } from '@/lib/notes'
 
 type NoteColor = 'yellow' | 'pink' | 'mint' | 'lav' | 'blue'
 type Note = {
@@ -17,6 +22,7 @@ type Note = {
   liked?: boolean
   // Optional user-selected date (YYYY-MM-DD) displayed under the note body in detail view
   noteDate?: string
+  pinned?: boolean
 }
 
 function timeAgo(ts: number) {
@@ -38,7 +44,7 @@ function useTick(ms = 60000) {
   }, [ms])
 }
 
-function NoteCard({ note, small, onClick }: { note: Note; small?: boolean; onClick?: () => void }) {
+function NoteCard({ note, small, onClick, onToggleLike }: { note: Note; small?: boolean; onClick?: () => void; onToggleLike?: (n: Note) => void }) {
   return (
     <div
       className={`note ${small ? 'small' : ''}`}
@@ -64,10 +70,15 @@ function NoteCard({ note, small, onClick }: { note: Note; small?: boolean; onCli
             <span className="tim">{timeAgo(note.createdAt || Date.now())}</span>
           )}
         </div>
-        <div className="likepill">
+        <button
+          type="button"
+          className="likepill"
+          aria-pressed={note.liked ? true : false}
+          onClick={(e) => { e.stopPropagation(); onToggleLike?.(note) }}
+        >
           <span className={"icon heart " + (note.liked ? "liked" : "")}>{note.liked ? "\u2665" : "\u2661"}</span>
           <span>{note.likes || 0}</span>
-        </div>
+        </button>
       </div>
     </div>
   )
@@ -78,16 +89,8 @@ export default function App() {
   const yearNow = new Date().getFullYear()
   const OCT30 = `${yearNow}-10-30`
   const OCT27 = `${yearNow}-10-27`
-  const [pinned, setPinned] = useState<Note[]>([    { id: 'p1', title: 'Team Meeting', body: 'Notes for today at 4 PM', color: 'mint', category: 'event', author: '@mj', createdAt: Date.now() - 3600_000, likes: 3 },
-    { id: 'p2', title: 'Idea', body: 'Improvement to board interactions', color: 'yellow', category: 'boast', author: '@jk', createdAt: Date.now() - 7200_000, likes: 1 },
-    { id: 'p3', title: 'Sprint', body: 'Next sprint goals', color: 'blue', category: 'notice', author: '@pm', createdAt: Date.now() - 5400_000, likes: 5 },
-  ])
-  const [feed, setFeed] = useState<Note[]>([    { id: 'f1', title: 'Research', body: 'User testing schedule', color: 'lav', category: 'talk', author: '@ux', createdAt: Date.now() - 14 * 60_000, likes: 2, noteDate: OCT30 },
-    { id: 'f2', title: 'Bug', body: 'Mobile scroll jitter', color: 'pink', category: 'notice', author: '@fe', createdAt: Date.now() - 30 * 60_000, noteDate: OCT30 },
-    { id: 'f3', title: 'Release', body: 'v0.1.2 tag', color: 'yellow', category: 'event', author: '@ops', createdAt: Date.now() - 50 * 60_000, likes: 7, noteDate: OCT27 },
-    { id: 'f4', title: 'Inquiry', body: 'Client A request summary', color: 'mint', category: 'talk', author: '@cs', createdAt: Date.now() - 2 * 3600_000 },
-    { id: 'f5', title: 'Design', body: 'New button style', color: 'blue', category: 'boast', author: '@ds', createdAt: Date.now() - 6 * 3600_000 },
-  ])
+  const [pinned, setPinned] = useState<Note[]>([])
+  const [feed, setFeed] = useState<Note[]>([])
   const [detail, setDetail] = useState<Note | null>(null)
   const [showCompose, setShowCompose] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
@@ -95,6 +98,12 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('')
   const [showSplash, setShowSplash] = useState(true)
   const [showProfile, setShowProfile] = useState(false)
+  const [showFcLogin, setShowFcLogin] = useState(false)
+  const [supabaseStatus, setSupabaseStatus] = useState<'checking' | 'ok' | 'error'>('checking')
+  const [supabaseDetail, setSupabaseDetail] = useState('')
+  const [showMyPage, setShowMyPage] = useState(false)
+  const [myNotes, setMyNotes] = useState<Note[]>([])
+  const [streak, setStreak] = useState<number>(0)
   const [walletName, setWalletName] = useState<string | null>(null)
   const [account, setAccount] = useState<string | null>(null)
   const [showWalletPicker, setShowWalletPicker] = useState(false)
@@ -121,6 +130,27 @@ export default function App() {
     if (cached) setSession(JSON.parse(cached))
   }, [])
 
+  // Dev-only Supabase connectivity check (auth settings endpoint)
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    ;(async () => {
+      try {
+        const url = import.meta.env.VITE_SUPABASE_URL as string
+        const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+        const res = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: key } })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        setSupabaseStatus('ok')
+        const json = await res.json().catch(() => null)
+        setSupabaseDetail('auth settings reachable')
+        console.info('[supabase] connection OK', json)
+      } catch (err: any) {
+        setSupabaseStatus('error')
+        setSupabaseDetail(String(err?.message || err))
+        console.error('[supabase] connection ERROR', err)
+      }
+    })()
+  }, [])
+
   // Always signal readiness ASAP so the splash hides in Mini Apps
   useEffect(() => {
     try { void sdk.actions.ready() } catch {}
@@ -132,6 +162,75 @@ export default function App() {
     return () => clearTimeout(t)
   }, [])
   useEffect(() => { if (session) setShowSplash(false) }, [session])
+
+
+  // Record daily check-in and fetch current streak once per day per user
+  useEffect(() => {
+    const uid = getLikeUserId()
+    if (!uid) return
+    const key = `checkin.last:${uid}`
+    let last: string | null = null
+    try { last = localStorage.getItem(key) } catch {}
+    const today = new Date().toISOString().slice(0, 10)
+    if (last === today) {
+      getCurrentStreak(uid).then(setStreak).catch(() => {})
+      return
+    }
+    recordDailyCheckin(uid)
+      .then((n) => {
+        setStreak(n)
+        try { localStorage.setItem(key, today) } catch {}
+      })
+      .catch(() => {})
+  }, [session])
+
+  function getLikeUserId(): string | undefined {
+    const sid = session?.fid != null ? String(session.fid) : (session?.username || '')
+    return sid || undefined
+  }
+
+  // Load notes from Supabase on mount or when session changes (fallback to demo data if it fails)
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const userId = session ? (session.fid != null ? String(session.fid) : (session.username || '')) : undefined
+        const { pinned: p, feed: f, likedIds } = await listNotes(userId || undefined)
+        const likedSet = new Set(likedIds || [])
+        const mapRow = (r: DbNote): Note => ({
+          id: r.id,
+          title: r.title,
+          body: r.body,
+          color: r.color,
+          category: r.category,
+          author: r.author,
+          createdAt: r.created_at ? Date.parse(r.created_at) : undefined,
+          noteDate: r.note_date || undefined,
+          likes: r.likes ?? 0,
+          liked: likedSet.has(r.id),
+          pinned: !!r.pinned,
+        })
+        setPinned(p.map(mapRow))
+        setFeed(f.map(mapRow))
+      } catch (e) {
+        console.warn('[supabase] listNotes failed; showing demo notes', e)
+        const yearNow = new Date().getFullYear()
+        const OCT30 = `${yearNow}-10-30`
+        const OCT27 = `${yearNow}-10-27`
+        setPinned([
+          { id: 'p1', title: 'Team Meeting', body: 'Notes for today at 4 PM', color: 'mint', category: 'event', author: '@mj', createdAt: Date.now() - 3600_000, likes: 3 },
+          { id: 'p2', title: 'Idea', body: 'Improvement to board interactions', color: 'yellow', category: 'boast', author: '@jk', createdAt: Date.now() - 7200_000, likes: 1 },
+          { id: 'p3', title: 'Sprint', body: 'Next sprint goals', color: 'blue', category: 'notice', author: '@pm', createdAt: Date.now() - 5400_000, likes: 5 },
+        ])
+        setFeed([
+          { id: 'f1', title: 'Research', body: 'User testing schedule', color: 'lav', category: 'talk', author: '@ux', createdAt: Date.now() - 14 * 60_000, likes: 2, noteDate: OCT30 },
+          { id: 'f2', title: 'Bug', body: 'Mobile scroll jitter', color: 'pink', category: 'notice', author: '@fe', createdAt: Date.now() - 30 * 60_000, noteDate: OCT30 },
+          { id: 'f3', title: 'Release', body: 'v0.1.2 tag', color: 'yellow', category: 'event', author: '@ops', createdAt: Date.now() - 50 * 60_000, likes: 7, noteDate: OCT27 },
+          { id: 'f4', title: 'Inquiry', body: 'Client A request summary', color: 'mint', category: 'talk', author: '@cs', createdAt: Date.now() - 2 * 3600_000 },
+          { id: 'f5', title: 'Design', body: 'New button style', color: 'blue', category: 'boast', author: '@ds', createdAt: Date.now() - 6 * 3600_000 },
+        ])
+      }
+    })()
+  }, [session])
 
   
 
@@ -210,19 +309,20 @@ export default function App() {
     try { return Boolean((injectedFallback as any)?.isMetaMask) } catch { return false }
   }, [injectedFallback])
 
+
   function chainNameFromId(id?: string | number | null) {
     if (id == null) return 'Unknown'
     const hex = typeof id === 'number' ? '0x' + id.toString(16) : String(id)
-    const map: Record<string, string> = {
-      '0x1': 'Mainnet',
-      '0xaa36a7': 'Sepolia',
-      '0x2105': 'Base',
-      '0x14a33': 'Base Sepolia',
-      '0xa': 'OP Mainnet',
-      '0x1a4': 'OP Sepolia',
-      '0xa4b1': 'Arbitrum One',
-      '0x66eee': 'Arb Sepolia',
-      '0x89': 'Polygon',
+      const map: Record<string, string> = {
+        '0x1': 'Mainnet',
+        '0xaa36a7': 'Sepolia',
+        '0x2105': 'Base',
+        '0x14a34': 'Base Sepolia',
+        '0xa': 'OP Mainnet',
+        '0x1a4': 'OP Sepolia',
+        '0xa4b1': 'Arbitrum One',
+        '0x66eee': 'Arb Sepolia',
+        '0x89': 'Polygon',
       '0x13881': 'Mumbai',
     }
     return map[hex.toLowerCase()] || `Chain ${hex}`
@@ -367,6 +467,27 @@ export default function App() {
 
   const autoConnectTriedRef = useRef(false)
 
+  // Persist wallet connection across reloads
+  const WALLET_STORE = 'wallet.last'
+  function providerKeyFor(p: any): string {
+    // Try to reverse-lookup known provider id
+    try {
+      for (const [k, v] of (installedMap as Map<string, any>).entries()) {
+        if (v === p) return k
+      }
+      // Fallback: detect MetaMask via injected flag
+      if ((p as any)?.isMetaMask) return 'metamask'
+    } catch {}
+    return 'injected'
+  }
+  function persistWallet(p: any, addr?: string | null, cid?: string | null) {
+    try {
+      const pid = providerKeyFor(p)
+      const payload = { providerId: pid, account: addr || null, chainId: cid || null }
+      localStorage.setItem(WALLET_STORE, JSON.stringify(payload))
+    } catch {}
+  }
+
   // Auto-connect wallet when running inside Farcaster Mini App
   useEffect(() => {
     (async () => {
@@ -393,6 +514,39 @@ export default function App() {
       } catch {}
     })()
   }, [providers, installedMap, injectedFallback, account])
+
+  // Restore last wallet connection in regular browsers (silent, no prompt)
+  useEffect(() => {
+    (async () => {
+      if (autoConnectTriedRef.current) return
+      if (account) return
+      let saved: any = null
+      try { saved = JSON.parse(localStorage.getItem(WALLET_STORE) || 'null') } catch {}
+      const pid = saved?.providerId as string | undefined
+      if (!pid) return
+      const p = (installedMap as Map<string, any>).get(pid) || injectedFallback
+      if (!p) return
+      autoConnectTriedRef.current = true
+      try {
+        const accounts: string[] = await p.request({ method: 'eth_accounts' }).catch(() => [])
+        const addr = accounts?.[0]
+        if (addr) {
+          const cid: string | undefined = await p.request({ method: 'eth_chainId' }).catch(() => undefined)
+          setAccount(addr)
+          setWalletName(shorten(addr))
+          if (cid) setChainId(cid)
+          activeProviderRef.current = p
+          try {
+            p.removeListener?.('accountsChanged', onAccountsChanged)
+            p.on?.('accountsChanged', onAccountsChanged)
+            p.removeListener?.('chainChanged', onChainChanged)
+            p.on?.('chainChanged', onChainChanged)
+          } catch {}
+          persistWallet(p, addr, cid || null)
+        }
+      } catch {}
+    })()
+  }, [installedMap, injectedFallback, account])
 
   function WalletIcon({ id }: { id?: string }) {
     const sz = 20
@@ -469,13 +623,13 @@ export default function App() {
     switch (hex) {
       // Base
       case '0x2105':
-      case '0x14a33':
-        return (
-          <svg {...common} viewBox="0 0 24 24" aria-hidden>
-            <circle cx="12" cy="12" r="10" fill="#0052FF" />
-            <rect x="7" y="11" width="10" height="2" rx="1" fill="#fff" />
-          </svg>
-        )
+        case '0x14a34':
+          return (
+            <svg {...common} viewBox="0 0 24 24" aria-hidden>
+              <circle cx="12" cy="12" r="10" fill="#0052FF" />
+              <rect x="7" y="11" width="10" height="2" rx="1" fill="#fff" />
+            </svg>
+          )
       // Ethereum
       case '0x1':
       case '0xaa36a7':
@@ -537,15 +691,12 @@ export default function App() {
         activeProviderRef.current = p
         console.log('Connected wallet address:', addr)
         if (cid) console.log('Connected chain:', chainNameFromId(cid))
-        if (pendingAction === 'compose') {
-          // If nickname/session is not set yet, prompt for name first
-          if (!session) {
-            setShowNamePrompt(true)
-          } else {
+        // Persist connection
+        persistWallet(p, addr, cid || null)
+          if (pendingAction === 'compose') {
             setPendingAction(null)
             setShowCompose(true)
           }
-        }
         try {
           p.removeListener?.('accountsChanged', onAccountsChanged)
           p.on?.('accountsChanged', onAccountsChanged)
@@ -566,11 +717,15 @@ export default function App() {
     setAccount(a)
     setWalletName(a ? shorten(a) : null)
     if (a) console.log('Switched wallet address:', a)
+    const prov = activeProviderRef.current
+    if (prov) persistWallet(prov, a, chainId)
   }
 
   function onChainChanged(next: string) {
     setChainId(next)
     console.log('Switched chain:', chainNameFromId(next))
+    const prov = activeProviderRef.current
+    if (prov) persistWallet(prov, account, next)
   }
 
   const featuredIds = ['coinbase','metamask','rainbow','farcaster','walletconnect','trust','zerion']
@@ -590,18 +745,79 @@ export default function App() {
   }
 
   function handleComposeClick() {
-    if (!account) {
-      setPendingAction('compose')
-      setShowWalletPicker(true)
-      setShowAllWallets(false)
-      return
-    }
     if (!session) {
       setPendingAction('compose')
-      setShowNamePrompt(true)
+      setShowFcLogin(true)
       return
     }
     setShowCompose(true)
+  }
+
+  async function openBaseQrLogin() {
+    try {
+      setBaseQrBusy(true)
+      async function loadSdk(): Promise<any | null> {
+        const globalAny: any = window as any
+        if (globalAny.CoinbaseWalletSDK) return globalAny.CoinbaseWalletSDK
+        const urls = [
+          'https://cdn.jsdelivr.net/npm/@coinbase/wallet-sdk/dist/wallet-sdk.umd.min.js',
+          'https://unpkg.com/@coinbase/wallet-sdk/dist/wallet-sdk.umd.min.js'
+        ]
+        for (const url of urls) {
+          try {
+            await new Promise<void>((resolve, reject) => {
+              const s = document.createElement('script')
+              s.src = url
+              s.async = true
+              s.onload = () => resolve()
+              s.onerror = () => reject(new Error('script load failed'))
+              document.head.appendChild(s)
+            })
+            if (globalAny.CoinbaseWalletSDK) return globalAny.CoinbaseWalletSDK
+          } catch {}
+        }
+        return null
+      }
+      const SDK = await loadSdk()
+      if (!SDK) { alert('Coinbase Wallet SDK failed to load. Please check your network.'); return }
+      const appName = 'BoardCast'
+      const appLogoUrl = location.origin + '/icon.svg'
+      const sdk = new SDK({ appName, appLogoUrl, enableMobileWalletLink: true })
+      const provider = sdk.makeWeb3Provider('https://sepolia.base.org', 84532)
+      // Ensure Base Sepolia
+      try {
+        await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x14a34' }] })
+      } catch (e: any) {
+        if (e?.code === 4902) {
+          await provider.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: '0x14a34',
+              chainName: 'Base Sepolia',
+              nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+              rpcUrls: ['https://sepolia.base.org'],
+              blockExplorerUrls: ['https://sepolia.basescan.org'],
+            }],
+          })
+        }
+      }
+      const accounts: string[] = await provider.request({ method: 'eth_requestAccounts' })
+      const addr = accounts?.[0]
+      if (addr) {
+        activeProviderRef.current = provider
+        setAccount(addr)
+        setWalletName(shorten(addr))
+        setChainId('0x14a34')
+        setShowAuthChoice(false)
+        if (pendingAction === 'compose') { setPendingAction(null); setShowCompose(true) }
+      }
+    } catch (err: any) {
+      console.error('Base QR connect failed', err)
+      const msg = err?.message || 'Base login failed'
+      alert(msg)
+    } finally {
+      setBaseQrBusy(false)
+    }
   }
 
   function shorten(addr: string) {
@@ -616,7 +832,7 @@ export default function App() {
   type ChainOpt = { id: string; name: string; params?: any }
   const chainOptions: ChainOpt[] = [
     { id: '0x2105', name: 'Base', params: { chainId: '0x2105', chainName: 'Base', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://mainnet.base.org'], blockExplorerUrls: ['https://basescan.org'] } },
-    { id: '0x14a33', name: 'Base Sepolia', params: { chainId: '0x14a33', chainName: 'Base Sepolia', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://sepolia.base.org'], blockExplorerUrls: ['https://sepolia.basescan.org'] } },
+    { id: '0x14a34', name: 'Base Sepolia', params: { chainId: '0x14a34', chainName: 'Base Sepolia', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://sepolia.base.org'], blockExplorerUrls: ['https://sepolia.basescan.org'] } },
     { id: '0x1', name: 'Ethereum', params: { chainId: '0x1', chainName: 'Ethereum', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://cloudflare-eth.com'], blockExplorerUrls: ['https://etherscan.io'] } },
     { id: '0xaa36a7', name: 'Sepolia', params: { chainId: '0xaa36a7', chainName: 'Sepolia', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://rpc.sepolia.org'], blockExplorerUrls: ['https://sepolia.etherscan.io'] } },
     { id: '0xa', name: 'OP Mainnet', params: { chainId: '0xa', chainName: 'OP Mainnet', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://mainnet.optimism.io'], blockExplorerUrls: ['https://optimistic.etherscan.io'] } },
@@ -652,7 +868,56 @@ export default function App() {
     setWalletName(null)
     setChainId(null)
     setShowNetworkPopup(false)
+    try { localStorage.removeItem(WALLET_STORE) } catch {}
   }
+
+  // Load my notes when My Page is shown, and mark liked based on note_likes
+  useEffect(() => {
+    (async () => {
+      if (!showMyPage) return
+      const uname = session?.username
+      if (!uname) { setMyNotes([]); return }
+      try {
+        const handle = uname.startsWith('@') ? uname : '@' + uname
+        const { data, error } = await supabase
+          .from('notes')
+          .select('*')
+          .eq('author', handle)
+          .order('created_at', { ascending: false })
+        if (error) throw error
+        const rows = (data || []) as any[]
+        let likedIds: Set<string> | undefined
+        try {
+          const uid = getLikeUserId()
+          if (uid && rows.length) {
+            const { data: liked, error: lerr } = await supabase
+              .from('note_likes')
+              .select('note_id')
+              .in('note_id', rows.map((r: any) => r.id))
+              .eq('user_id', uid)
+            if (!lerr && liked) likedIds = new Set(liked.map((x: any) => x.note_id))
+          }
+        } catch {}
+        const mapRow = (r: any): Note => ({
+          id: r.id,
+          title: r.title,
+          body: r.body,
+          color: r.color,
+          category: r.category,
+          author: r.author,
+          createdAt: r.created_at ? Date.parse(r.created_at) : undefined,
+          noteDate: r.note_date || undefined,
+          likes: r.likes ?? 0,
+          liked: likedIds ? likedIds.has(r.id) : false,
+          pinned: !!r.pinned,
+        })
+        setMyNotes(rows.map(mapRow))
+      } catch (e) {
+        console.warn('[supabase] load my notes failed', e)
+        setMyNotes([])
+      }
+    })()
+  }, [showMyPage, session])
 
   async function handleAvatarLogin() {
     try {
@@ -674,8 +939,8 @@ export default function App() {
         setSession(next)
         alert(`Signed in as @${next.username}`)
       } else {
-        // Web: prompt user to choose a nickname (guest)
-        setShowNamePrompt(true)
+        // Web: Farcaster sign-in only
+        setShowFcLogin(true)
       }
     } catch (e: any) {
       console.error(e)
@@ -722,19 +987,44 @@ export default function App() {
   }
 
   function openDetail(id: string) {
-    const n = pinned.find((x) => x.id === id) || feed.find((x) => x.id === id)
-    if (n) setDetail(n)
+    const n = pinned.find((x) => x.id === id) || feed.find((x) => x.id === id) || myNotes.find?.((x) => x.id === id)
+    if (n) setDetail(n as Note)
   }
 
   function toggleLike(n: Note) {
-    n.liked = !n.liked
-    n.likes = Math.max(0, (n.likes || 0) + (n.liked ? 1 : -1))
-    setPinned([...pinned])
-    setFeed([...feed])
-    setDetail((v) => (v ? { ...v } : v))
+      if (!session) {
+        // Require sign-in for liking
+        setShowFcLogin(true)
+        return
+      }
+      const userId = getLikeUserId()
+      if (!userId) return
+    const prevLiked = n.liked || false
+    const prevLikes = n.likes || 0
+    const nextLiked = !prevLiked
+    const optimisticLikes = Math.max(0, prevLikes + (nextLiked ? 1 : -1))
+    // Optimistic immutable update
+    setPinned((arr) => arr.map((x) => x.id === n.id ? { ...x, liked: nextLiked, likes: optimisticLikes } : x))
+    setFeed((arr) => arr.map((x) => x.id === n.id ? { ...x, liked: nextLiked, likes: optimisticLikes } : x))
+    setMyNotes((arr) => arr.map((x) => x.id === n.id ? { ...x, liked: nextLiked, likes: optimisticLikes } : x))
+    setDetail((v) => (v && v.id === n.id ? { ...v, liked: nextLiked, likes: optimisticLikes } : v))
+    const p = nextLiked ? likeNote(n.id, userId) : unlikeNote(n.id, userId)
+    p.then((total) => {
+      setPinned((arr) => arr.map((x) => (x.id === n.id ? { ...x, likes: total } : x)))
+      setFeed((arr) => arr.map((x) => (x.id === n.id ? { ...x, likes: total } : x)))
+      setMyNotes((arr) => arr.map((x) => (x.id === n.id ? { ...x, likes: total } : x)))
+      setDetail((v) => (v && v.id === n.id ? { ...v, likes: total } : v))
+    }).catch((e) => {
+      console.warn('[supabase] like toggle failed', e)
+      // Revert on failure
+      setPinned((arr) => arr.map((x) => (x.id === n.id ? { ...x, liked: prevLiked, likes: prevLikes } : x)))
+      setFeed((arr) => arr.map((x) => (x.id === n.id ? { ...x, liked: prevLiked, likes: prevLikes } : x)))
+      setMyNotes((arr) => arr.map((x) => (x.id === n.id ? { ...x, liked: prevLiked, likes: prevLikes } : x)))
+      setDetail((v) => (v && v.id === n.id ? { ...v, liked: prevLiked, likes: prevLikes } : v))
+    })
   }
 
-  function addNote(form: FormData) {
+  async function addNote(form: FormData) {
     const title = String(form.get('title') || '').trim()
     const body = String(form.get('body') || '').trim()
     const categoryRaw = String(form.get('category') || '').trim()
@@ -755,21 +1045,69 @@ export default function App() {
     // Always record actual creation time for the memo timestamp
     const createdAt = Date.now()
     const noteDate = useDate && dateStr ? dateStr : undefined
-    const n: Note = {
-      id: Math.random().toString(36).slice(2),
-      title,
-      body,
-      category: categoryRaw,
-      color,
-      author,
-      createdAt,
-      noteDate,
-      likes: 0,
-      liked: false,
+    try {
+      // 1) Trigger on-chain payment + createPost on Base Sepolia
+      try {
+        const txHash = await createPostTx(title, body, pin)
+        await waitForReceipt(txHash)
+        alert('Transaction complete')
+      } catch (chainErr: any) {
+        const msg = chainErr?.message || String(chainErr)
+        console.error('[onchain] createPost failed', chainErr)
+        alert(`Transaction failed or rejected. ${msg}`)
+        return
+      }
+      // 2) Proceed with existing DB note creation for UI persistence
+      const row = await dbCreateNote({
+        id: Math.random().toString(36).slice(2),
+        title,
+        body,
+        category: categoryRaw,
+        color,
+        author,
+        created_at: new Date(createdAt).toISOString(),
+        note_date: noteDate || null,
+        likes: 0,
+        pinned: pin,
+      })
+      const n: Note = {
+        id: row.id,
+        title: row.title,
+        body: row.body,
+        category: row.category,
+        color: row.color,
+        author: row.author,
+        createdAt: row.created_at ? Date.parse(row.created_at) : createdAt,
+        noteDate: row.note_date || undefined,
+        likes: row.likes ?? 0,
+        liked: false,
+        pinned: !!row.pinned,
+      }
+      if (pin) setPinned(([n, ...pinned]).slice(0, 3))
+      else setFeed([n, ...feed])
+      try { (document.getElementById('composeForm') as HTMLFormElement)?.reset() } catch {}
+      setShowCompose(false)
+      } catch (e) {
+        console.error('[supabase] createNote failed, keeping local only', e)
+        const n: Note = {
+          id: Math.random().toString(36).slice(2),
+          title,
+          body,
+        category: categoryRaw,
+        color,
+        author,
+        createdAt,
+        noteDate,
+          likes: 0,
+          liked: false,
+          pinned: pin,
+        }
+        if (pin) setPinned(([n, ...pinned]).slice(0, 3))
+        else setFeed([n, ...feed])
+      try { (document.getElementById('composeForm') as HTMLFormElement)?.reset() } catch {}
+      setShowCompose(false)
+      }
     }
-    if (pin) setPinned(([n, ...pinned]).slice(0, 3))
-    else setFeed([n, ...feed])
-  }
 
   const pinnedFillers: Note[] = pinned.length ? pinned : [
     { id: 'e1', color: 'mint' },
@@ -1022,6 +1360,46 @@ export default function App() {
           </>
         )}
 
+          {showFcLogin && !session && (
+            <>
+              <div className="wallet-overlay" onClick={() => setShowFcLogin(false)} aria-hidden />
+              <div className="wallet-pop fc-login" role="dialog" aria-modal="true" aria-label="Sign in with Farcaster">
+                <div className="wallet-card" onClick={(e) => e.stopPropagation()}>
+                  <button className="wallet-close" aria-label="Close" onClick={() => setShowFcLogin(false)}>x</button>
+                <div className="wallet-title">Sign in with Farcaster</div>
+                  <div style={{ fontSize: 14, color: '#555', marginBottom: 4 }}>
+                    A new window or QR will appear for Warpcast approval.
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'flex-end', marginTop: -4 }}>
+                  <div style={{ transform:'scale(0.65)', transformOrigin:'right center', width:'max-content' }}>
+                  <SignInButton
+                     onSuccess={(res: any) => {
+                       try {
+                         const p = (res && (res.profile || res.user || res)) || {}
+                         const fid = p.fid ?? res?.fid
+                         const username = p.username ?? res?.username ?? String(fid || '')
+                         const displayName = p.displayName || p.display_name || username
+                         const pfpUrl = p.pfpUrl || p.pfp_url
+                         const next: Session = { fid, username, displayName, pfpUrl }
+                         setSession(next)
+                         setShowFcLogin(false)
+                         alert(`Signed in as @${username}`)
+                       } catch (e) {
+                         console.error('AuthKit success parse failed', e)
+                       }
+                     }}
+                     onError={(e: any) => {
+                       console.error('Farcaster sign-in failed', e)
+                       alert('Farcaster sign-in failed. Please try again.')
+                     }}
+                  />
+                  </div>
+                  </div>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* No blocking login overlay for external browsers */}
 
         {showNetworkPopup && (
@@ -1050,21 +1428,64 @@ export default function App() {
           </>
         )}
 
-        {!showCalendar && !showTrophy ? (
+        {showMyPage ? (
+          <div className="mypage-screen" role="region" aria-label="My Page">
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 12px', borderBottom:'2px solid var(--ink)' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div className="profile-pfp" style={{ width:40, height:40 }}>
+                  {session?.pfpUrl ? <img src={session.pfpUrl} alt="" /> : <div className="pfp-placeholder" />}
+                </div>
+                <div>
+                  <div className="profile-name">{session?.displayName || (session?.username ? `@${session.username}` : 'My Page')}</div>
+                  {session?.username && <div className="profile-username">@{session.username}</div>}
+                </div>
+              </div>
+              <div className="streak-pill"><span role="img" aria-label="fire">&#x1F525;</span><span className="streak-num">{streak}</span></div>
+            </div>
+            <div className="feed-hdr"><div className="feed-lbl">My Notes</div></div>
+            {session?.username ? (
+              <div className="feed" id="feedGrid">
+                {myNotes.map((n) => (
+                  <div key={n.id} className="note" data-color={n.color as any} style={{ position:'relative', minHeight:80, marginBottom:10, padding:'10px 10px 26px', cursor:'pointer' }} onClick={() => openDetail(n.id)}>
+                    {n.title && <div className="meta">{n.title}</div>}
+                    {n.body && <div className="preview">{n.body}</div>}
+                    <div className="footer">
+                      <div className="bytime">
+                        <span className="tim">{new Date((n as any).created_at || Date.now()).toLocaleDateString()}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="likepill"
+                        aria-pressed={n.liked ? true : false}
+                        onClick={(e) => { e.stopPropagation(); toggleLike(n) }}
+                      >
+                        <span className={"icon heart " + (n.liked ? "liked" : "")}>{n.liked ? "\u2665" : "\u2661"}</span>
+                        <span>{n.likes || 0}</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {myNotes.length === 0 && <div style={{ color:'#666', padding:8 }}>No notes yet.</div>}
+              </div>
+            ) : (
+              <div style={{ color:'#666', padding:8 }}>Sign in to view your notes.</div>
+            )}
+          </div>
+        ) : !showCalendar && !showTrophy ? (
           <div className="content">
-          <div className="today">Today’s Notes</div>
+          <div className="today">Today's Notes</div>
 
           <div className="hero" id="heroRow">
             {pinnedFillers.map((n) => (
               <div key={n.id} onClick={() => openDetail(n.id)}>
-                <NoteCard note={n} />
+                <NoteCard note={n} onToggleLike={toggleLike} />
               </div>
             ))}
-          </div>
+            </div>
 
-          <div className="feed-hdr">
-            <div className="feed-lbl">Categories</div>
-          </div>
+            <div className="feed-hdr">
+              <div className="feed-lbl">Categories</div>
+            </div>
 
           <div className="catrow">
             <button className={`catchip ${activeCategory==='' ? 'active' : ''}`} onClick={() => setActiveCategory('')}>All</button>
@@ -1077,7 +1498,7 @@ export default function App() {
             <div className="feed" id="feedGrid">
               {visibleFeed.map((n) => (
                 <div key={n.id} onClick={() => openDetail(n.id)}>
-                  <NoteCard note={n} small />
+                  <NoteCard note={n} small onToggleLike={toggleLike} />
                 </div>
               ))}
             </div>
@@ -1164,9 +1585,9 @@ export default function App() {
         )}
 
         <div className="bottom-nav" role="navigation" aria-label="Primary">
-          <button className="navbtn" title="Home" aria-label="Home" onClick={() => { setShowCalendar(false); setShowTrophy(false) }}>
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
-              <path d="M3 12l9-8 9 8v8H14v-5h-4v5H3z" fill="none" stroke="#111" strokeWidth="2" strokeLinejoin="round" />
+          <button className="navbtn" title="Home" aria-label="Home" onClick={() => { setShowCalendar(false); setShowTrophy(false); setShowMyPage(false) }}>
+            <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden>
+              <path d="M3 12l9-8 9 8v8H14v-5h-4v5H3z" fill="none" stroke="#333" strokeWidth="2" strokeLinejoin="round" />
             </svg>
           </button>
           <button
@@ -1178,30 +1599,30 @@ export default function App() {
               const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
               setCalSelected(todayStr)
               setCalMonth(new Date(now.getFullYear(), now.getMonth(), 1))
-              setShowTrophy(false); setShowCalendar(true)
+              setShowMyPage(false); setShowTrophy(false); setShowCalendar(true)
             }}
           >
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
-              <rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="#111" strokeWidth="2" />
-              <path d="M8 3v4M16 3v4M3 10h18" fill="none" stroke="#111" strokeWidth="2" strokeLinecap="round" />
+            <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden>
+              <rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="#333" strokeWidth="2" />
+              <path d="M8 3v4M16 3v4M3 10h18" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
-          <button className="navbtn" title="Trophy" aria-label="Trophy" onClick={() => { setShowCalendar(false); setShowTrophy(true) }}>
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
-              <path d="M6 6h12v3a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5V6z" fill="none" stroke="#111" strokeWidth="2" />
-              <path d="M8 20h8M10 14v4h4v-4" fill="none" stroke="#111" strokeWidth="2" strokeLinecap="round" />
-              <path d="M6 9H4a2 2 0 0 1-2-2V6h4v3zM18 9h2a2 2 0 0 0 2-2V6h-4v3z" fill="none" stroke="#111" strokeWidth="2" />
+          <button className="navbtn" title="Trophy" aria-label="Trophy" onClick={() => { setShowCalendar(false); setShowMyPage(false); setShowTrophy(true) }}>
+            <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden>
+              <path d="M6 6h12v3a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5V6z" fill="none" stroke="#333" strokeWidth="2" />
+              <path d="M8 20h8M10 14v4h4v-4" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" />
+              <path d="M6 9H4a2 2 0 0 1-2-2V6h4v3zM18 9h2a2 2 0 0 0 2-2V6h-4v3z" fill="none" stroke="#333" strokeWidth="2" />
             </svg>
           </button>
-          <button className="navbtn" title="Profile" aria-label="Profile" onClick={handleAvatarClick}>
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
-              <circle cx="12" cy="9" r="4" fill="none" stroke="#111" strokeWidth="2" />
-              <path d="M5 20c0-3.5 3.3-6 7-6s7 2.5 7 6" fill="none" stroke="#111" strokeWidth="2" strokeLinecap="round" />
+          <button className="navbtn" title="My Page" aria-label="My Page" onClick={() => { setShowCalendar(false); setShowTrophy(false); setShowMyPage(true) }}>
+            <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden>
+              <circle cx="12" cy="9" r="4" fill="none" stroke="#333" strokeWidth="2" />
+              <path d="M5 20c0-3.5 3.3-6 7-6s7 2.5 7 6" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
         </div>
 
-        {!showCalendar && !showTrophy && (
+        {!showTrophy && (
           <div className="btfab">
             <button className="fab" id="btnCompose" onClick={handleComposeClick}>+</button>
           </div>
@@ -1237,7 +1658,11 @@ export default function App() {
                     <div className="profile-username">@{session.username}</div>
                   </div>
                 </div>
-                <div className="row end" style={{ marginTop: 12 }}>
+                <div className="row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
+                  <div className="streak-pill" aria-label={`Streak ${streak} days`}>
+                    <span role="img" aria-label="fire">&#x1F525;</span>
+                    <span className="streak-num">{streak || 0}</span>
+                  </div>
                   <button className="btn" onClick={signOut}>Sign out</button>
                 </div>
               </div>
@@ -1265,8 +1690,6 @@ export default function App() {
         if (!t || !b) { alert('Please enter both title and content'); return }
         if (!c) { alert('Please select a category'); return }
         addNote(fd)
-        setShowCompose(false)
-        e.currentTarget.reset()
       }}
       id="composeForm"
     >
@@ -1339,7 +1762,11 @@ export default function App() {
         </div>
       </div>
 
-      <div className="row end">
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ color: "#666", fontSize: 12, lineHeight: 1.25 }}>
+          <div>A small fee is required to prevent spam (0.0001 ETH)</div>
+          <div>Pinned post requires an additional fee (0.001 ETH)</div>
+        </div>
         <button className="btn" type="submit">Post</button>
       </div>
     </form>
@@ -1360,7 +1787,7 @@ export default function App() {
         <div className="detail-meta">
           <span>{detail.author || '@anon'}</span>
           <span>-</span>
-          <span>{new Date(detail.createdAt || Date.now()).toLocaleString()}</span>
+          <span>{(() => { const d = new Date(detail.createdAt || Date.now()); const dateStr = d.toISOString().slice(0,10).replace(/-/g,'.'); const timeStr = d.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }); return `${dateStr} ${timeStr}`; })()}</span>
         </div>
         <button
           className={`likebtn ${detail.liked ? 'liked' : ''} detail-like`}
@@ -1375,3 +1802,15 @@ export default function App() {
     </div>
   )
 }
+
+
+
+
+
+
+
+
+
+
+
+
