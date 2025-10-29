@@ -1,74 +1,157 @@
-## Farcaster Mini App Shell
+# BoardCast — Farcaster Mini App + Web
 
-미니앱 퍼블리시용 최소 껍데기(project scaffold)입니다. Vite + React 기반이며 Mini App manifest와 `llms-full.txt`가 포함됩니다. 파캐스터 로그인은 Neynar(또는 Farcaster Auth) 연동을 위한 스텁 코드가 들어있습니다.
+BoardCast is a playful “sticky‑note board” for communities. It runs both as a Farcaster Mini App inside Warpcast and as a regular web app. Users can sign in with Farcaster, connect a wallet, post colorful notes by category, pin items to the top, like notes, browse by calendar, and see a lightweight leaderboard.
 
-### 구성
+The app persists notes in Supabase and also triggers an on‑chain transaction for each post (Base Sepolia by default) using viem. It bundles a simple serverless backend (Vercel) to integrate Farcaster login via Neynar/Farcaster Auth.
 
-- `public/.well-known/miniapp.json`: Mini App manifest (경로/필드명은 최신 문서 기준으로 조정하세요)
-- `public/llms-full.txt`: LLM 안내 파일 (문서의 최신 내용을 복사해 교체)
-- `public/icon.svg`: 앱 아이콘 플레이스홀더
-- `index.html`, `src/*`: Vite + React 앱
-- `src/auth/neynar.ts`: 로그인 흐름 스텁 (데모/실서비스 모드)
+## Features
 
-### 실행
+- Farcaster sign‑in
+  - In Mini App: auto/quick auth via `@farcaster/miniapp-sdk`
+  - On web: one‑click sign‑in via `@farcaster/auth-kit` (Neynar/Farcaster Auth compatible)
+- Wallet connect (EIP‑6963 discovery) with Coinbase/MetaMask/Rainbow and more, plus a QR fallback for Coinbase Wallet
+- Create notes with title, content, color, category; optional “pin to top”
+- Likes with optimistic UI and per‑user like state
+- Calendar view (filter notes by selected date)
+- Leaderboard (by streak, pins, and total writes)
+- Supabase persistence for notes and likes
+- On‑chain post write using viem on Base Sepolia (configurable)
 
-1) 의존성 설치
+## Tech Stack
+
+- React 18 + Vite + TypeScript
+- Farcaster SDKs: `@farcaster/miniapp-sdk`, `@farcaster/auth-kit`
+- Supabase: `@supabase/supabase-js`
+- Ethereum tooling: `viem`
+- Optional Coinbase Wallet SDK (QR connect fallback)
+- Vercel serverless functions for auth proxying
+
+## Quick Start
+
+1) Install dependencies
 
 ```
 npm install
 ```
 
-2) 환경설정
+2) Configure environment
 
 ```
 cp .env.example .env
-# 개발 초기에는 데모 모드 그대로 사용 (VITE_NEYNAR_DEMO=1)
+# For easiest local testing, enable demo mode:
+# VITE_NEYNAR_DEMO=1
 ```
 
-3) 개발 서버
+3) Run dev server
 
 ```
 npm run dev
 ```
 
-빌드 후 배포:
+Build and preview:
 
 ```
 npm run build && npm run preview
 ```
 
-### Farcaster 로그인 붙이기 (실서비스)
+## Environment Variables
 
-현재 코드는 두 가지 모드를 지원합니다.
+Frontend (Vite) envs:
 
-- 데모 모드: `VITE_NEYNAR_DEMO=1` → 실제 승인은 없고, 더미 사용자로 로그인 완료됩니다.
-- 실서비스 모드: `VITE_NEYNAR_DEMO=0` → 여러분 백엔드를 통해 Neynar(또는 Farcaster Auth) API를 호출해야 합니다.
+- `VITE_NEYNAR_DEMO` — Set `1` in local dev to bypass real auth and use demo sessions.
+- `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` — Supabase project URL and anon key.
+- `VITE_NETWORK_CHAIN_ID` — Target chain id (hex or number). Default flow uses Base Sepolia (84532).
+- `VITE_CONTRACT_ADDRESS` — Deployed contract address used for `createPost`.
+- `VITE_CONTRACT_ABI` — Contract ABI as a single‑line JSON string.
+- `VITE_BASE_SEPOLIA_RPC` — Optional RPC URL for Base Sepolia reads.
+- `VITE_FC_RPC_URL` — Optional Optimism RPC for AuthKit (defaults to public mainnet endpoint).
 
-권장 흐름(서버 사이드):
+Backend (Vercel serverless) envs for Farcaster/Neynar auth:
 
-1. 클라이언트가 `POST /api/neynar/auth/begin` 호출 → 서버가 Neynar에 토큰/승인 URL 요청 → `{ token, approvalUrl }` 반환
-2. 클라이언트는 `approvalUrl`을 새 창으로 열어 사용자가 승인
-3. 클라이언트가 `POST /api/neynar/auth/poll { token }`로 승인 여부 폴링 → 서버는 승인 완료 시 Farcaster 사용자 프로필을 받아 클라이언트에 반환 (세션 토큰은 서버 보관 권장)
+- `NEYNAR_AUTH_BEGIN_URL`, `NEYNAR_AUTH_POLL_URL` — Your provider’s begin/poll endpoints.
+- `NEYNAR_API_KEY` and optional `NEYNAR_API_KEY_HEADER` (defaults to `api_key`).
+- Optional flow customizations:
+  - `NEYNAR_CLIENT_ID`, `NEYNAR_REDIRECT_URI`, `NEYNAR_SCOPE`, `NEYNAR_RESPONSE_TYPE`
+  - `POLL_MAX_MS`, `POLL_INTERVAL_MS`
+  - `NEYNAR_POLL_METHOD` (`GET`/`POST`), `NEYNAR_POLL_QUERY_KEY`, `NEYNAR_POLL_BODY_KEY`
+  - `NEYNAR_POLL_AUTH_SCHEME` (e.g., `Bearer` if token must go in `Authorization`)
+  - `NEYNAR_USER_URL` if your flow returns an access token that must be exchanged for profile data
 
-서버 예시(의사 코드):
+## Data Model (Supabase)
 
-```ts
-// POST /api/neynar/auth/begin
-// - Neynar API 키를 서버 환경변수로 보관
-// - Neynar Sign-in 시작 엔드포인트 호출 후 token, approvalUrl을 반환
+The app expects two tables. You can adapt types, but keep column names consistent with the code in `src/lib/notes.ts`.
 
-// POST /api/neynar/auth/poll
-// - begin에서 받은 token으로 Neynar 상태 조회
-// - 승인 완료면 fid, username, pfp 등 사용자 정보를 받아 클라이언트로 전달
-```
+Notes table (`notes`):
 
-Farcaster Mini Apps 최신 문서: `https://miniapps.farcaster.xyz/docs/getting-started`
-위 문서에 맞춰 `miniapp.json`(또는 요구되는 매니페스트 파일명/경로)과 권한 필드를 업데이트하세요.
+- `id` text or uuid primary key
+- `title` text
+- `body` text
+- `color` text enum: `yellow|pink|mint|lav|blue`
+- `category` text (e.g., `notice|event|talk|boast|recruit`)
+- `author` text (e.g., `@username`)
+- `created_at` timestamp with time zone
+- `note_date` date (nullable) — optional date shown under note body
+- `likes` integer (default 0)
+- `pinned` boolean (default false)
 
-### 배포 체크리스트
+Likes table (`note_likes`):
 
-- `https://YOUR-DOMAIN/.well-known/miniapp.json` 가 공개로 서빙되는지
-- `https://YOUR-DOMAIN/llms-full.txt` 가 문서의 최신 내용으로 서빙되는지
-- 아이콘/이름/설명 등 메타데이터가 실제 서비스명으로 반영되었는지
-- 로그인 공급자(Neynar/Farcaster Auth) 키/콜백/도메인 설정이 맞는지
+- `note_id` references `notes.id`
+- `user_id` text (Farcaster `fid` or username)
+- Unique constraint on `(note_id, user_id)`
+
+The client updates `notes.likes` based on row counts in `note_likes` for the note.
+
+## On‑Chain Posting
+
+- Code: `src/lib/eth.ts`
+- Uses `viem` with an injected EIP‑1193 provider.
+- Defaults to Base Sepolia (84532). Chain can be switched from the UI.
+- Function invoked: `createPost(title, content, pinToTop)` on your contract.
+  - Sends a small value with the tx; code uses a higher amount when `pinToTop` is true.
+- Configure via:
+  - `VITE_CONTRACT_ADDRESS`
+  - `VITE_CONTRACT_ABI` (JSON array)
+  - `VITE_NETWORK_CHAIN_ID`
+
+## Farcaster Login
+
+- Inside Mini App: `@farcaster/miniapp-sdk` quick auth is used; the app auto‑reads `context.user` and stores a session.
+- On web: `@farcaster/auth-kit` provides the “Sign in with Farcaster” button/modal.
+- For production, set the `api/neynar/auth` serverless endpoints to proxy your auth provider (Neynar or compatible) using the envs above.
+
+API routes (Vercel):
+
+- `POST /api/neynar/auth/begin` → returns `{ token, approvalUrl }`
+- `POST /api/neynar/auth/poll` with `{ token }` → returns `{ fid, username, displayName?, pfpUrl? }`
+
+## Mini App Manifest
+
+- `public/.well-known/miniapp.json` — update `name`, `description`, `developer` fields for your app.
+- `public/llms-full.txt` — keep this up‑to‑date per Farcaster docs.
+
+Docs: https://miniapps.farcaster.xyz/docs/getting-started
+
+## Build & Deploy
+
+- Local: `npm run dev`
+- Build: `npm run build`
+- Preview: `npm run preview`
+- Vercel: this repo includes `vercel.json` and serverless functions under `api/`.
+  - Set the Vite envs (prefixed `VITE_…`) and the `NEYNAR_…` envs in your Vercel Project Settings.
+  - Ensure `/.well-known/miniapp.json` and `/llms-full.txt` are publicly served after deploy.
+
+## Project Structure
+
+- `index.html`, `src/` — Vite + React app
+- `src/app/App.tsx` — main UI, wallet connect, calendar, leaderboard, compose flow
+- `src/lib/` — `supabaseClient`, `notes`, `streaks`, `eth`
+- `src/auth/neynar.ts` — frontend helpers for begin/poll or demo mode
+- `api/neynar/auth/*` — Vercel serverless auth proxy (begin/poll)
+- `public/.well-known/miniapp.json` — Mini App manifest
+
+## Notes
+
+- Do not commit real secrets. Keep `VITE_SUPABASE_ANON_KEY` and any Neynar keys in your deployment env.
+- Demo mode (`VITE_NEYNAR_DEMO=1`) is for local development only.
 
