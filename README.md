@@ -1,8 +1,13 @@
-# BoardCast — Farcaster Mini App + Web
+# 🧷 BoardCast — Farcaster Mini App (Web Version)
 
-BoardCast is a playful “sticky‑note board” for communities. It runs both as a Farcaster Mini App inside Warpcast and as a regular web app. Users can sign in with Farcaster, connect a wallet, post colorful notes by category, pin items to the top, like notes, browse by calendar, and see a lightweight leaderboard.
+**BoardCast** is a Farcaster-inspired “sticky note board” currently running as a **web app**,  with full support for future Mini App integration.  
+The app is designed according to the Farcaster Mini App framework and includes all required files (`miniapp.json`, `llms-full.txt`), but it has **not yet been officially registered** on Warpcast.
 
-The app persists notes in Supabase and also triggers an on‑chain transaction for each post (Base Sepolia by default) using viem. It bundles a simple serverless backend (Vercel) to integrate Farcaster login via Neynar/Farcaster Auth.
+Users can sign in with Farcaster (via Neynar), connect wallets, post colorful notes by category,  
+pin items, like posts, browse by calendar, and view community leaderboards.
+
+All notes are persisted in Supabase, and each post also triggers an on-chain transaction (Base Sepolia by default) using viem. It bundles a simple serverless backend (Vercel) to integrate Farcaster login via Neynar/Farcaster Auth.
+
 
 ## Features
 
