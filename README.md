@@ -1,6 +1,6 @@
 # 🧷 BoardCast — Farcaster Mini App (Web Version)
 
-**BoardCast** is a Farcaster-inspired “sticky note board” currently running as a **web app**,  with full support for future Mini App integration.  
+**BoardCast** is a playful “sticky‑note board” for communities currently running as a **web app**,  with full support for future Mini App integration.  
 The app is designed according to the Farcaster Mini App framework and includes all required files (`miniapp.json`, `llms-full.txt`), but it has **not yet been officially registered** on Warpcast.
 
 Users can sign in with Farcaster (via Neynar), connect wallets, post colorful notes by category,  
